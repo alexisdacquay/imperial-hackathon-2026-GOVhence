@@ -1,0 +1,2 @@
+# Test runner (M2). Added one line per milestone, only when actually needed.
+pytest

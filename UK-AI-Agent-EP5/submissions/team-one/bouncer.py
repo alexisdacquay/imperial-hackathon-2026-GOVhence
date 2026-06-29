@@ -11,6 +11,7 @@ the permission decision must be deterministic, never made by an LLM.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import audit
 
@@ -36,15 +37,41 @@ class Decision:
     reason: str
 
 
-def check_item(allowed_categories: set[str], item: MemoryItem) -> Decision:
+def check_item(allowed_categories, item: MemoryItem) -> Decision:
     """Decide whether ONE item may be seen, given the allowed categories.
 
     The whole rule is: is the item's category in the allowed set?
     This is deterministic and explainable -- we always say *why*.
+
+    This function is the single security chokepoint, so it is DEFENSIVE and
+    TOTAL: it returns a Decision for *any* input and never raises. Anything it
+    cannot evaluate as a genuine, exact, string-in-set match is DENIED
+    (fail-closed) with a reason, so monitoring still explains the refusal.
+
+    Why this matters: Python's `in` is overloaded. If `allowed_categories` were
+    accidentally a *string* (not a set), `"x" in "xyz"` is a SUBSTRING test and
+    would silently ALLOW the wrong thing -- a fail-open leak. We forbid that here
+    once, so every caller (now and in later milestones) inherits the guarantee.
     """
-    if item.category in allowed_categories:
-        return Decision(item, True, f"category '{item.category}' is in the allowed set")
-    return Decision(item, False, f"category '{item.category}' is NOT in the allowed set")
+    category = item.category
+
+    # The item's tag must be a real string. A None/number/list category is a
+    # data error -> DENY (fail-closed), never a silent pass or a crash.
+    if not isinstance(category, str):
+        return Decision(item, False,
+                        f"category is not a string (got {type(category).__name__}) -> denied")
+
+    # The allowed set must be a genuine set/frozenset. We REFUSE str/list/None
+    # so membership can never degrade into a substring or sequence scan, and so
+    # a missing/empty profile fails closed instead of crashing.
+    if not isinstance(allowed_categories, (set, frozenset)):
+        return Decision(item, False,
+                        f"allowed categories is not a set (got {type(allowed_categories).__name__}) "
+                        f"-> denied")
+
+    if category in allowed_categories:
+        return Decision(item, True, f"category '{category}' is in the allowed set")
+    return Decision(item, False, f"category '{category}' is NOT in the allowed set")
 
 
 def filter_allowed(allowed_categories: set[str], items: list[MemoryItem]) -> list[MemoryItem]:
@@ -56,19 +83,26 @@ def filter_allowed(allowed_categories: set[str], items: list[MemoryItem]) -> lis
     return [item for item in items if check_item(allowed_categories, item).allowed]
 
 
-def retrieve(user: str, allowed_categories: set[str], items: list[MemoryItem]) -> list[MemoryItem]:
+def retrieve(user: str, allowed_categories: set[str], items: list[MemoryItem],
+             log_path: Path = audit.LOG_PATH) -> list[MemoryItem]:
     """The audited access path -- what real callers use.
 
     For EVERY item we make the deterministic decision AND write it to the audit
     log at this exact point (the access layer). Both ALLOWs and DENYs are logged,
     giving 100% coverage and full "who saw what, when" traceability.
     Returns only the allowed items.
+
+    log_path defaults to the PERMANENT regulatory audit log. Tests pass a temp
+    path so they never touch the real compliance record.
     """
     allowed_items: list[MemoryItem] = []
     for item in items:
         decision = check_item(allowed_categories, item)
         verdict = "ALLOW" if decision.allowed else "DENY"
-        audit.log_decision(user, item.id, item.category, verdict, decision.reason)
+        # Audit FIRST, then grant. If the access cannot be recorded, it must not
+        # be served -- an unlogged access breaks 100% audit coverage. We let
+        # AuditError propagate (fail closed): no log => no access, loudly.
+        audit.log_decision(user, item.id, item.category, verdict, decision.reason, path=log_path)
         if decision.allowed:
             allowed_items.append(item)
     return allowed_items
