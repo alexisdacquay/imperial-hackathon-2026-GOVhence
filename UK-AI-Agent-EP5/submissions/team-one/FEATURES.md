@@ -20,6 +20,8 @@
 - **Crypto-chain certification** — signed/non-repudiable records + external anchoring (e.g. Kaspa).
 - **Police agent** — continuous security/rules monitor (alerts, never decides access).
 - **Whistle-blower agent** — independent crypto-chained anomaly log; the message survives the messenger.
+- **Whitehat agent** — live in-production red-team; behaves as normal user + attacker, leaves
+  crypto-chained proof-of-presence "RFID taps" so skipped/silenced rounds are detectable.
 - **Robustness + demo generator** — randomised users/queries (innocent errors + injection attempts);
   stress-test scale (must hold, zero false negatives) and human-readable demo scale.
 - **Modern GUI** — staged pipeline visual: login → profile/RBAC → LLM uses shared memory → Scribe

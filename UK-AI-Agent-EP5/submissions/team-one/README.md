@@ -52,6 +52,9 @@ regulator.
 - Every memory item wears a **category tag** (`schedules`, `financials`, `legal`…). Your role
   unlocks a set of tags. Access = *is this tag in your set?* — an **exact, strict** match.
 - Every decision is **logged immutably**. Revoke a source and the block **chases it everywhere**.
+- **We verify by trying, not by trusting.** A real guard doesn't glance at the chained gate and
+  assume it's locked — they *rattle it*. Our security actively attacks itself: it probes its own
+  defences for ways in, rather than asserting they hold. Active verification over passive trust.
 
 > This is exactly what the track demands: *"enforcement must be deterministic."* We took it literally.
 

@@ -40,6 +40,30 @@
   is.** If the whistle-blower process is stopped/tampered, or its findings are deleted, the gap is
   detectable (sequence + chain), and ideally the alert chain is anchored/mirrored outside the
   host so "accidentally killing the messenger" cannot erase the message. Tamper-evident by design.
+- [ ] **9. "Whitehat" agent — LIVE, ongoing penetration testing in production.** A standing agent
+  that continuously exercises the running system — **not just a pre-prod robustness test, but live
+  during real production.** It behaves in two modes, interleaved:
+  - **a) Normal user** — gentle, ordinary, well-behaved access (the baseline). Proves the happy path
+    keeps working under a real, varied load.
+  - **b) Attacker** — actively probes for weaknesses: malformed/injection inputs, fail-open attempts,
+    boundary escapes, repeated/abusive queries. **Crashing is acceptable; finding a HIDDEN issue is
+    far better than a false negative.** The whole point is to surface latent leaks/holes *before* a
+    real attacker does — silence is failure if a hole exists.
+  - **Guiding principle — verify by trying, not by trusting.** A real guard does not glance at the
+    chained gate and believe it is locked; they *rattle it*. The whitehat physically tries the locks
+    rather than asserting they hold — active verification, every round.
+  - **Proof-of-presence (RFID-tap analogy).** Like a security guard who must tap RFID tokens
+    dispersed around the building to *prove the rounds were actually walked*, the whitehat must leave
+    **crypto-chained fingerprints** in the file and in the log at each checkpoint — a tamper-evident,
+    non-repudiable trail showing *what it did, where, and when*. If the whitehat skips a round, goes
+    silent, or is killed/disabled, the **missing taps are detectable** (sequence + chain gap), so
+    "the watchdog was quietly switched off" cannot pass unnoticed.
+  - **Demonstrable behaviour.** The agent must be able to *show* it is doing both jobs: a stream of
+    benign activity AND a stream of attacks, each fingerprinted, each landing in the audit/alert
+    trail — so an auditor (or judge) can see the live red-team is genuinely running, not faked.
+  - Relates to #2 (police = monitor/alert), #3 (whistle-blower = anomaly + uncloseable message),
+    #1 (crypto-chain), and #4 (the stress/demo generator supplies its attack payloads). Together
+    these four form a continuous, self-proving, tamper-evident security harness *inside* the product.
 
 ### Robustness, stress-test & demo data
 - [ ] **4. Randomised user/data generator (robustness + demo).** One module that generates
@@ -61,6 +85,18 @@
   judge-live) uses the shared memory and writes to it → 4) **Scribe** (our agent — rename, see #6)
   annotates the new memory with our defined tags → 5) the AI reads, with limited access →
   6) a visual signal showing the access decision and the check result (ALLOW/DENY, why).
+- [ ] **10. GUI — live Whitehat panel (show the pen-test, don't hide problems).** A distinct GUI
+  area that surfaces the Whitehat agent (#9) in real time:
+  - **Progress & stages** — what the whitehat is doing right now (normal-user round vs attack round),
+    its activity stream, and its "RFID-tap" proof-of-presence checkpoints as they land.
+  - **Pen-test activities & results** — each probe attempted and its outcome (held / crashed /
+    leak-found), with running counts.
+  - **Issues found are SHOWN, never hidden.** Surface every problem the whitehat finds — open a
+    visible "Issues" list with severity + repro, linked to the audit/alert trail. Transparency is the
+    point: a green board that hides a real hole is a failure; an honest red flag is a success.
+  - Ties to #9 (whitehat), #2/#3 (police/whistle-blower feed it), and #5 (same GUI pipeline).
+  - *Why it matters:* demonstrates to judges/auditors that the live red-team is genuinely running
+    and that the system reports its own weaknesses honestly — the opposite of security theatre.
 
 ### Naming
 - [ ] **6. Rename the tagging/annotation agent to "Scribe".** The write-time agent that classifies
