@@ -12,9 +12,12 @@ IMPORTANT: audit tests write to a TEMPORARY file (pytest's tmp_path), never the
 real regulatory audit_log.csv. The real compliance record is never touched here.
 """
 
+import json
+
 import pytest
 
 import audit
+import memory
 from bouncer import MemoryItem, check_item, filter_allowed, retrieve
 
 
@@ -214,3 +217,54 @@ def test_logging_failure_fails_closed(tmp_path):
     items = [MemoryItem("item1", "schedules", "x")]
     with pytest.raises(audit.AuditError):
         retrieve("bob", {"schedules"}, items, log_path=bad)
+
+
+# --- Tamper-evidence: the audit log must DETECT any alteration -----------
+
+def _write_some(log):
+    audit.log_decision("bob", "item1", "schedules", "ALLOW", "ok", path=log)
+    audit.log_decision("bob", "item5", "legal", "DENY", "no", path=log)
+    audit.log_decision("ceo", "item4", "financials", "ALLOW", "ok", path=log)
+
+
+def test_intact_log_verifies(tmp_path):
+    log = tmp_path / "audit.csv"
+    _write_some(log)
+    ok, msg = audit.verify(log)
+    assert ok is True
+    assert "intact" in msg
+
+
+def test_rows_have_sequence_numbers(tmp_path):
+    log = tmp_path / "audit.csv"
+    _write_some(log)
+    seqs = [r["seq"] for r in audit.read_log(log)]
+    assert seqs == ["0", "1", "2"]   # consecutive, no gaps
+
+
+def test_editing_a_row_is_detected(tmp_path):
+    # Flip a DENY into an ALLOW directly in the file (the "cover my tracks" attack).
+    log = tmp_path / "audit.csv"
+    _write_some(log)
+    text = log.read_text(encoding="utf-8").replace("item5,legal,DENY", "item5,legal,ALLOW")
+    log.write_text(text, encoding="utf-8")
+    ok, msg = audit.verify(log)
+    assert ok is False
+    assert "hash mismatch" in msg
+
+
+def test_deleting_a_row_is_detected(tmp_path):
+    # Remove a record entirely. The sequence gap (or broken chain) must be caught.
+    log = tmp_path / "audit.csv"
+    _write_some(log)
+    lines = log.read_text(encoding="utf-8").splitlines()
+    # Drop the middle data row (header is line 0, data rows follow).
+    del lines[2]
+    log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    ok, msg = audit.verify(log)
+    assert ok is False
+
+
+def test_empty_log_verifies_trivially(tmp_path):
+    ok, msg = audit.verify(tmp_path / "nothing.csv")
+    assert ok is True

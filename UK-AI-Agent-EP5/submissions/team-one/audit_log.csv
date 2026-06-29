@@ -1,6 +1,6 @@
-timestamp,user,item_id,category,decision,reason
-2026-06-29T14:04:14.612999+00:00,bob,item1,schedules,ALLOW,category 'schedules' is in the allowed set
-2026-06-29T14:04:14.613476+00:00,bob,item2,opening-hours,ALLOW,category 'opening-hours' is in the allowed set
-2026-06-29T14:04:14.613823+00:00,bob,item3,goods-weights-volumes,ALLOW,category 'goods-weights-volumes' is in the allowed set
-2026-06-29T14:04:14.614173+00:00,bob,item4,financials,DENY,category 'financials' is NOT in the allowed set
-2026-06-29T14:04:14.614541+00:00,bob,item5,legal,DENY,category 'legal' is NOT in the allowed set
+seq,timestamp,user,item_id,category,decision,reason,row_hash
+0,2026-06-29T16:27:36.302521+00:00,bob,item1,schedules,ALLOW,category 'schedules' is in the allowed set,d91db0de069297b8fc4dfc01d2e372f38d696e2b44905662cae91c46f3b451cf
+1,2026-06-29T16:27:36.316189+00:00,bob,item2,opening-hours,ALLOW,category 'opening-hours' is in the allowed set,825e9ca6111a15e49a373217a589de20ef71c0d2d5e5c82344170f2d31a0f781
+2,2026-06-29T16:27:36.326495+00:00,bob,item3,goods-weights-volumes,ALLOW,category 'goods-weights-volumes' is in the allowed set,317bc07be416fe49271785af5e7ba7e25faee5b577620604b0a5db970468bfe9
+3,2026-06-29T16:27:36.335344+00:00,bob,item4,financials,DENY,category 'financials' is NOT in the allowed set,ed22874f7fc6c3411b45bf92302aba63023c998d5e61508592a2d69dfe2f0ffa
+4,2026-06-29T16:27:36.345530+00:00,bob,item5,legal,DENY,category 'legal' is NOT in the allowed set,69378f60ecd22c6c3f39deb5078aa2630d6373a043091f55078ad0bfb5582660
