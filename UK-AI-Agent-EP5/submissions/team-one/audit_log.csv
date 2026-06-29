@@ -4,3 +4,8 @@ seq,timestamp,user,item_id,category,decision,reason,row_hash
 2,2026-06-29T16:27:36.326495+00:00,bob,item3,goods-weights-volumes,ALLOW,category 'goods-weights-volumes' is in the allowed set,317bc07be416fe49271785af5e7ba7e25faee5b577620604b0a5db970468bfe9
 3,2026-06-29T16:27:36.335344+00:00,bob,item4,financials,DENY,category 'financials' is NOT in the allowed set,ed22874f7fc6c3411b45bf92302aba63023c998d5e61508592a2d69dfe2f0ffa
 4,2026-06-29T16:27:36.345530+00:00,bob,item5,legal,DENY,category 'legal' is NOT in the allowed set,69378f60ecd22c6c3f39deb5078aa2630d6373a043091f55078ad0bfb5582660
+5,2026-06-29T17:12:37.578064+00:00,bob,item1,schedules,DENY,item 'item1' is revoked -> denied,ff151d602b0da488d188933afe3ffaff6c0f0a469ea43ee0fdb411397d9a0620
+6,2026-06-29T17:12:37.590920+00:00,bob,item2,opening-hours,ALLOW,category 'opening-hours' is in the allowed set,b0c8f9e0c34ea4a058e94716893c2f1c5561ec65543dd59bf9d1ad59f4608bc3
+7,2026-06-29T17:12:37.599472+00:00,bob,item3,goods-weights-volumes,ALLOW,category 'goods-weights-volumes' is in the allowed set,2218cf0cfb7f39570e41216e0cd8eb3198d4ad22d20432326c4bf32edf390765
+8,2026-06-29T17:12:37.608716+00:00,bob,item4,financials,DENY,category 'financials' is NOT in the allowed set,d337201e28774ae0a6c141cf1b903c5048ca57652d6ce7d2d06657e122a056e0
+9,2026-06-29T17:12:37.617231+00:00,bob,item5,legal,DENY,category 'legal' is NOT in the allowed set,f04617795ac5ce897c897c466644bb8c6b4197781c653030f81b78cdf9efbf9d

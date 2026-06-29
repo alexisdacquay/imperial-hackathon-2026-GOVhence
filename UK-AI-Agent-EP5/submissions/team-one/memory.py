@@ -23,8 +23,9 @@ idea -- the forbidden categories are simply already gone from the set it checks.
 import json
 from pathlib import Path
 
-# The config lives next to this file so the demo and tests find it the same way.
+# The config files live next to this file so the demo and tests find them the same way.
 USERS_PATH = Path(__file__).with_name("users.json")
+LINEAGE_PATH = Path(__file__).with_name("lineage.json")
 
 # A role using "allow": ["*"] means "every known category". The single source of
 # truth for "every category" is the top-level "categories" list in users.json.
@@ -92,6 +93,17 @@ def categories_for_role(role_name: str, config: dict) -> set[str]:
 
     all_categories = set(config["categories"])
 
+    # Catch config typos: every category a role names (in allow or deny, ignoring
+    # the "*" wildcard) MUST be a real, known category. A role granting access to
+    # a category that doesn't exist is a silent misconfiguration -- in a
+    # governance tool that should be flagged, not quietly accepted. Fail closed.
+    named = (set(allow) | set(deny)) - {WILDCARD}
+    unknown = named - all_categories
+    if unknown:
+        raise ConfigError(
+            f"role '{role_name}' names unknown categor{'y' if len(unknown) == 1 else 'ies'} "
+            f"{sorted(unknown)} -- not in the 'categories' list (typo?)")
+
     # Expand the wildcard. "*" means "every known category"; it is NOT a category
     # name itself, so it must never end up in the returned set.
     if WILDCARD in allow:
@@ -122,6 +134,95 @@ def allowed_categories_for_user(user: str, config: dict = None) -> set[str]:
     return categories_for_role(users[user], config)
 
 
+# --- M5: lineage-based revocation ----------------------------------------
+# Memory items can be DERIVED_FROM other items. When a SOURCE item is revoked,
+# the revocation must propagate to EVERY item derived from it, transitively.
+# As with deny-beats-allow in M3, we resolve all of this HERE, at load time,
+# into one flat set of revoked ids -- so the bouncer's gate stays a pure set
+# lookup and never has to walk a graph.
+
+def load_lineage(path: Path = LINEAGE_PATH) -> dict:
+    """Read and minimally validate lineage.json. Returns the parsed dict.
+
+    Shape: {"derived_from": {child: [parents...]}, "revoked": [ids...]}. Both
+    sections are OPTIONAL (absent = empty), but when present their TYPES are
+    strictly checked. Fail-closed like load_config: any read/parse/shape problem
+    -> ConfigError, NEVER a silently-empty graph (an empty graph would mean
+    "nothing revoked" -- the permissive, fail-open direction).
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as e:
+        raise ConfigError(f"cannot read lineage file at {path}: {e}") from e
+
+    try:
+        lineage = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"lineage file is not valid JSON: {e}") from e
+
+    if not isinstance(lineage, dict):
+        raise ConfigError("lineage file must be a JSON object at the top level")
+
+    derived = lineage.get("derived_from", {})
+    revoked = lineage.get("revoked", [])
+    if not isinstance(derived, dict):
+        raise ConfigError("'derived_from' must be an object (child -> [parents])")
+    if not isinstance(revoked, list):
+        raise ConfigError("'revoked' must be a list of item ids")
+
+    # Each derived_from value must itself be a list of parent ids, so the closure
+    # traversal below can trust the structure it walks.
+    for child, parents in derived.items():
+        if not isinstance(parents, list):
+            raise ConfigError(f"'derived_from[{child}]' must be a list of parent ids")
+
+    return lineage
+
+
+def revoked_closure(lineage: dict) -> frozenset[str]:
+    """Resolve the lineage graph into EVERY revoked id, including transitives.
+
+    The file stores child -> parents (author-friendly). To propagate a revoked
+    SOURCE down to its derivatives we need parent -> children, so we invert the
+    map once here, then walk outward from every revoked source.
+
+    A `seen` set makes the walk TERMINATE even if the graph contains a cycle
+    (A derived_from B, B derived_from A -- a data error that must never hang the
+    loader). We use an explicit stack (not recursion) so a very long chain cannot
+    raise RecursionError. Returns a frozenset -- the immutable set type the gate
+    accepts.
+    """
+    derived_from = lineage.get("derived_from", {})
+    revoked_sources = lineage.get("revoked", [])
+
+    # Invert child -> parents  into  parent -> [children]  for outward traversal.
+    children: dict[str, list[str]] = {}
+    for child, parents in derived_from.items():
+        for parent in parents:
+            children.setdefault(parent, []).append(child)
+
+    seen: set[str] = set()
+    stack = list(revoked_sources)          # start from every revoked source
+    while stack:
+        node = stack.pop()
+        if node in seen:                   # cycle / diamond guard: never revisit
+            continue
+        seen.add(node)
+        stack.extend(children.get(node, []))   # enqueue this node's derivatives
+
+    return frozenset(seen)
+
+
+def revoked_ids(path: Path = LINEAGE_PATH) -> frozenset[str]:
+    """Load the lineage file and return the full revoked closure as a frozenset.
+
+    This is what callers hand to the bouncer. Fail-closed: a broken lineage file
+    raises ConfigError (access cannot be safely determined); it never returns an
+    empty 'nothing revoked' set on error.
+    """
+    return revoked_closure(load_lineage(path))
+
+
 # --- A tiny demo so you can run this file and watch the resolution work ----
 
 if __name__ == "__main__":
@@ -133,3 +234,11 @@ if __name__ == "__main__":
         role = config["users"][user]
         allowed = allowed_categories_for_user(user, config)
         print(f"{user:6} (role: {role:7}) -> may see {sorted(allowed)}")
+
+    # M5: show the lineage graph resolve to the full revoked set. Revoking one
+    # SOURCE pulls in every item transitively derived from it.
+    print("-" * 60)
+    lineage = load_lineage()
+    print(f"Loaded lineage from: {LINEAGE_PATH.name}")
+    print(f"Revoked sources:     {sorted(lineage.get('revoked', []))}")
+    print(f"Full revoked set:    {sorted(revoked_closure(lineage))}  (sources + all derivatives)")

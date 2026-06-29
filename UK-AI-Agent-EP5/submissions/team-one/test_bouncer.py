@@ -268,3 +268,229 @@ def test_deleting_a_row_is_detected(tmp_path):
 def test_empty_log_verifies_trivially(tmp_path):
     ok, msg = audit.verify(tmp_path / "nothing.csv")
     assert ok is True
+
+
+# --- M3: the users.json loader (memory.py) -------------------------------
+# The loader turns "username" into the exact SET of allowed categories the
+# bouncer checks. Like the bouncer, it is FAIL-CLOSED: anything malformed or
+# unknown raises ConfigError instead of returning a permissive set.
+
+def _write_config(tmp_path, config: dict):
+    """Write a throwaway users.json so tests never depend on the real one."""
+    path = tmp_path / "users.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    return path
+
+
+# A small, valid config reused by several tests: a driver and an exec-with-deny.
+def sample_config():
+    return {
+        "categories": ["schedules", "opening-hours", "goods-weights-volumes",
+                       "financials", "legal"],
+        "roles": {
+            "driver": {"allow": ["schedules", "opening-hours", "goods-weights-volumes"]},
+            "exec": {"allow": ["*"], "deny": ["legal"]},
+        },
+        "users": {"bob": "driver", "alice": "exec"},
+    }
+
+
+def test_driver_role_resolves_to_its_three_categories():
+    config = sample_config()
+    allowed = memory.allowed_categories_for_user("bob", config)
+    assert allowed == {"schedules", "opening-hours", "goods-weights-volumes"}
+
+
+def test_exec_wildcard_expands_to_every_category():
+    # "*" must become the real category names -- and "*" itself must NOT leak in
+    # as a fake category.
+    config = sample_config()
+    config["roles"]["exec"]["deny"] = []          # no deny -> wildcard = all
+    allowed = memory.allowed_categories_for_user("alice", config)
+    assert allowed == set(config["categories"])
+    assert "*" not in allowed
+
+
+def test_exec_deny_beats_allow():
+    # THE CEO rule: allow everything, deny legal. 'legal' must be absent even
+    # though the wildcard allowed it.
+    config = sample_config()
+    allowed = memory.allowed_categories_for_user("alice", config)
+    assert "financials" in allowed
+    assert "legal" not in allowed                 # deny beats allow
+
+
+def test_unknown_user_fails_closed():
+    config = sample_config()
+    with pytest.raises(memory.ConfigError):
+        memory.allowed_categories_for_user("mallory", config)
+
+
+def test_unknown_role_fails_closed():
+    # A user mapped to a role that doesn't exist must raise, not return {}.
+    config = sample_config()
+    config["users"]["ghost"] = "nonexistent-role"
+    with pytest.raises(memory.ConfigError):
+        memory.allowed_categories_for_user("ghost", config)
+
+
+def test_missing_section_fails_closed(tmp_path):
+    path = _write_config(tmp_path, {"roles": {}, "users": {}})   # no "categories"
+    with pytest.raises(memory.ConfigError):
+        memory.load_config(path)
+
+
+def test_bad_json_fails_closed(tmp_path):
+    path = tmp_path / "users.json"
+    path.write_text("{ this is not valid json ", encoding="utf-8")
+    with pytest.raises(memory.ConfigError):
+        memory.load_config(path)
+
+
+def test_missing_file_fails_closed(tmp_path):
+    with pytest.raises(memory.ConfigError):
+        memory.load_config(tmp_path / "does_not_exist.json")
+
+
+def test_loader_feeds_bouncer_end_to_end():
+    # The whole point of M3: the loader's set drives the unchanged bouncer.
+    # alice (exec) must get everything EXCEPT legal back from the gate.
+    config = sample_config()
+    allowed = memory.allowed_categories_for_user("alice", config)
+    returned_ids = [i.id for i in filter_allowed(allowed, sample_items())]
+    assert "item4" in returned_ids                # financials: allowed
+    assert "item5" not in returned_ids            # legal: denied by deny-list
+
+
+def test_loader_set_is_a_real_set_for_the_bouncer():
+    # The bouncer REFUSES a non-set allowed-list (fail-closed). The loader must
+    # therefore hand it a genuine set/frozenset, never a list/string.
+    config = sample_config()
+    allowed = memory.allowed_categories_for_user("bob", config)
+    assert isinstance(allowed, (set, frozenset))
+
+
+# --- M5: lineage-based revocation ----------------------------------------
+# Revoking a SOURCE item must propagate to EVERY item derived from it,
+# transitively. A revoked item is DENIED even if its category is allowed
+# ("revoked beats allowed"). The graph closure is computed at load time; the
+# gate just does set membership. Like everything else, this is FAIL-CLOSED.
+
+# A 2-hop chain so transitivity is actually exercised:
+#   itemC derived_from itemB,  itemB derived_from itemA,  revoke itemA
+#   -> closure must be {itemA, itemB, itemC}
+def sample_lineage():
+    return {
+        "derived_from": {"itemB": ["itemA"], "itemC": ["itemB"]},
+        "revoked": ["itemA"],
+    }
+
+
+def test_direct_revocation_denies_even_allowed_category():
+    # 'schedules' IS in BOB, but item1 is revoked -> DENY (revoked beats allowed).
+    item = MemoryItem("item1", "schedules", "...")
+    d = check_item(BOB, item, revoked_ids={"item1"})
+    assert d.allowed is False
+    assert "revoked" in d.reason
+
+
+def test_default_empty_revoked_set_changes_nothing():
+    # No revoked_ids passed -> behaves exactly as before (backward compatible).
+    item = MemoryItem("item1", "schedules", "...")
+    assert check_item(BOB, item).allowed is True
+
+
+def test_revoked_beats_allowed_through_retrieve(tmp_path):
+    # End-to-end: a revoked item is absent from the returned set, even though its
+    # category is allowed.
+    log = tmp_path / "audit.csv"
+    returned = retrieve("bob", BOB, sample_items(), log_path=log, revoked_ids={"item1"})
+    ids = [i.id for i in returned]
+    assert "item1" not in ids                     # schedules, but revoked
+    assert "item2" in ids                          # opening-hours, not revoked
+
+
+def test_transitive_two_hop_closure():
+    # Revoking the source itemA must pull in itemB (1 hop) and itemC (2 hops).
+    closure = memory.revoked_closure(sample_lineage())
+    assert closure == {"itemA", "itemB", "itemC"}
+    # And the gate denies the 2-hop leaf using that closure.
+    leaf = MemoryItem("itemC", "schedules", "...")
+    assert check_item(BOB, leaf, revoked_ids=closure).allowed is False
+
+
+def test_non_set_revoked_ids_fails_closed():
+    # A non-set revoked list must DENY (never coerce to empty = "nothing revoked",
+    # which would be fail-OPEN). Mirrors the allowed-set guard.
+    item = MemoryItem("item1", "schedules", "...")
+    for bad in [None, ["item1"], "item1"]:
+        d = check_item(BOB, item, revoked_ids=bad)
+        assert d.allowed is False
+        assert "not a set" in d.reason
+
+
+def test_revocation_is_id_scoped_not_category_scoped():
+    # Two items share the 'schedules' category; revoking ONE by id must not
+    # revoke the other. Proves revocation targets the item, not the category.
+    items = [MemoryItem("a", "schedules", "1"), MemoryItem("b", "schedules", "2")]
+    returned = filter_allowed(BOB, items, revoked_ids={"a"})
+    assert [i.id for i in returned] == ["b"]
+
+
+def test_closure_terminates_on_a_cycle():
+    # A <-> B cycle is a data error; the closure must still terminate (and this
+    # test completing at all is the proof it does not infinite-loop).
+    cyclic = {"derived_from": {"itemA": ["itemB"], "itemB": ["itemA"]},
+              "revoked": ["itemA"]}
+    assert memory.revoked_closure(cyclic) == {"itemA", "itemB"}
+
+
+def test_revocation_is_logged_with_a_reason(tmp_path):
+    # 100% audit coverage: the revoked item's row is a DENY whose reason says why.
+    log = tmp_path / "audit.csv"
+    retrieve("bob", BOB, sample_items(), log_path=log, revoked_ids={"item1"})
+    rows = {r["item_id"]: r for r in audit.read_log(path=log)}
+    assert rows["item1"]["decision"] == "DENY"
+    assert "revoked" in rows["item1"]["reason"]
+
+
+def test_closure_is_a_real_set_for_the_gate():
+    # The gate REFUSES a non-set revoked list. The loader must hand it a genuine
+    # set/frozenset, never a list/string.
+    assert isinstance(memory.revoked_closure(sample_lineage()), (set, frozenset))
+
+
+# --- M5 loader: fail-closed parity with the M3 loader --------------------
+
+def test_load_lineage_reads_a_valid_file(tmp_path):
+    path = tmp_path / "lineage.json"
+    path.write_text(json.dumps(sample_lineage()), encoding="utf-8")
+    assert memory.revoked_ids(path) == {"itemA", "itemB", "itemC"}
+
+
+def test_load_lineage_missing_file_fails_closed(tmp_path):
+    with pytest.raises(memory.ConfigError):
+        memory.load_lineage(tmp_path / "nope.json")
+
+
+def test_load_lineage_bad_json_fails_closed(tmp_path):
+    path = tmp_path / "lineage.json"
+    path.write_text("{ not valid json ", encoding="utf-8")
+    with pytest.raises(memory.ConfigError):
+        memory.load_lineage(path)
+
+
+def test_load_lineage_rejects_wrong_shapes(tmp_path):
+    # Each malformed shape must raise (fail-closed), never return a permissive
+    # (empty = nothing-revoked) graph.
+    bad_configs = [
+        "[]",                                          # top level not an object
+        json.dumps({"derived_from": ["not", "a", "dict"]}),   # derived_from wrong type
+        json.dumps({"revoked": "itemA"}),              # revoked not a list
+        json.dumps({"derived_from": {"itemB": "itemA"}}),     # a value not a list
+    ]
+    for raw in bad_configs:
+        path = tmp_path / "lineage.json"
+        path.write_text(raw, encoding="utf-8")
+        with pytest.raises(memory.ConfigError):
+            memory.load_lineage(path)
