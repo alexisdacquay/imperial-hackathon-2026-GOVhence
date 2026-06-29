@@ -1,5 +1,5 @@
 """
-M3 — Loaders: turn the users.json config into inputs the bouncer understands.
+GOVhence MEM-Ø — M3/M5: loaders that turn config into inputs the bouncer understands.
 
 The bouncer's job is unchanged. It still receives ONE plain set of allowed
 categories and does its strict `category in allowed` check. This module is the

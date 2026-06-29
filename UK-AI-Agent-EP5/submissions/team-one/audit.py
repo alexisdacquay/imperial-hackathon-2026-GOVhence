@@ -1,5 +1,5 @@
 """
-Access-layer audit log (compliance + our own verification tool).
+GOVhence MEM-Ø — access-layer audit log (compliance + our own verification tool).
 
 WHY THIS EXISTS
 ---------------

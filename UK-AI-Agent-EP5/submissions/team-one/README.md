@@ -1,15 +1,14 @@
 ```
-   ███╗   ███╗███████╗███╗   ███╗ ██████╗ ██████╗ ██╗   ██╗
-   ████╗ ████║██╔════╝████╗ ████║██╔═══██╗██╔══██╗╚██╗ ██╔╝
-   ██╔████╔██║█████╗  ██╔████╔██║██║   ██║██████╔╝ ╚████╔╝
-   ██║╚██╔╝██║██╔══╝  ██║╚██╔╝██║██║   ██║██╔══██╗  ╚██╔╝
-   ██║ ╚═╝ ██║███████╗██║ ╚═╝ ██║╚██████╔╝██║  ██║   ██║
-   ╚═╝     ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝
-        g o v M E M n e n c e   ·   MEMORY Governance
-   ────────────────────────────────────────────────────────
-                    for shared AI memory
-   ────────────────────────────────────────────────────────
-     🔒 one shared memory · zero leaks · provable to auditors
+    ██████╗  ██████╗ ██╗   ██╗██╗  ██╗███████╗███╗   ██╗ ██████╗███████╗
+   ██╔════╝ ██╔═══██╗██║   ██║██║  ██║██╔════╝████╗  ██║██╔════╝██╔════╝
+   ██║  ███╗██║   ██║██║   ██║███████║█████╗  ██╔██╗ ██║██║     █████╗
+   ██║   ██║██║   ██║╚██╗ ██╔╝██╔══██║██╔══╝  ██║╚██╗██║██║     ██╔══╝
+   ╚██████╔╝╚██████╔╝ ╚████╔╝ ██║  ██║███████╗██║ ╚████║╚██████╗███████╗
+    ╚═════╝  ╚═════╝   ╚═══╝  ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝ ╚═════╝╚══════╝
+                ┌─────────────────────────────────────┐
+                │   M E M - Ø   ·   zero-trust memory  │
+                └─────────────────────────────────────┘
+        one shared memory · zero leaks · provable to auditors
 ```
 
 > **Give a whole company of AI agents one shared brain — without any of them seeing what they
@@ -84,19 +83,21 @@ regulator.
 
 ```
 $ python bouncer.py
-────────────────────────────────────────────────────────────
+────────────────────────────────────────────────────────────────────────
 User: bob (driver, logistics)   allowed: schedules, opening-hours, goods-weights-volumes
-────────────────────────────────────────────────────────────
-  ALLOW  item1   schedules              "Truck 4: 30 pallets to Leeds, 06:00"
-  ALLOW  item2   opening-hours          "Warehouse open Mon–Fri 05:00–22:00"
-  ALLOW  item3   goods-weights-volumes  "Inbound: 12 tonnes, 40 m³"
+Revoked items: item1                                       (a leaked source)
+────────────────────────────────────────────────────────────────────────
+  DENY   item1   schedules              item is REVOKED  ← revoked beats allowed
+  ALLOW  item2   opening-hours          in bob's allowed set
+  ALLOW  item3   goods-weights-volumes  in bob's allowed set
   DENY   item4   financials             not in bob's allowed set
   DENY   item5   legal                  not in bob's allowed set
-────────────────────────────────────────────────────────────
-  Returned 3 of 5 — every decision written to the audit trail
+────────────────────────────────────────────────────────────────────────
+  Returned 2 of 5 — every decision written to the audit trail
 ```
 
-The driver gets his schedule. The financials and legal files? **Never even leave the store.**
+`item1`'s category (`schedules`) is one bob is *allowed* to see — but it was **revoked**, so it is
+denied anyway. The financials and legal files? **Never even leave the store.**
 
 ---
 
@@ -203,9 +204,13 @@ python -m pytest -v  # all 52 tests — the proof every feature works
 
 ```
    ┌────────────────────────────────────────────────────────────┐
-   │   shared memory.  zero leaks.  provable.  —  govMEMnence    │
+   │   shared memory.  zero leaks.  provable.  — GOVhence MEM-Ø  │
    └────────────────────────────────────────────────────────────┘
 ```
 
+> **Naming:** written **GOVhence MEM-Ø** (the slashed Ø evokes zero-trust); typed as `MEM-0` in code,
+> CLI, and filenames. The submission folder stays `team-one` per the hackathon's lowercase-hyphenated
+> rule.
+>
 > **No secrets committed.** Real config stays local (`.env.example` documents the variables).
 > The audit log here holds **only fake demo data**.

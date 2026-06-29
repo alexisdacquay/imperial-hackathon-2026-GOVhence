@@ -1,5 +1,5 @@
 """
-M1 — The deterministic "bouncer".
+GOVhence MEM-Ø — M1: the deterministic "bouncer".
 
 This is the heart of the whole project. Given a user's set of allowed
 categories and a list of memory items (each tagged with one category),

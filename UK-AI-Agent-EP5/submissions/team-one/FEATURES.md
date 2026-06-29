@@ -1,6 +1,6 @@
-# govMEMnence — Feature Datasheet
+# GOVhence MEM-Ø — Feature Datasheet
 
-**MEMORY Governance for shared AI memory** — one shared memory, zero leaks, provable to auditors.
+**Governed memory for shared AI agents** — one shared memory, zero leaks, provable to auditors.
 
 ## Implemented (live, 52 automated tests)
 - **Deterministic access control** — strict exact-match category check; no AI in the decision.

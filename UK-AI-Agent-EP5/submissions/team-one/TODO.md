@@ -1,4 +1,4 @@
-# govMEMnence — TODO / Roadmap
+# GOVhence MEM-Ø — TODO / Roadmap
 
 > Master backlog. Easy to find for humans and AI: this is `TODO.md` at the project root.
 > Status legend: `[ ]` not started · `[~]` in progress · `[x]` done.
