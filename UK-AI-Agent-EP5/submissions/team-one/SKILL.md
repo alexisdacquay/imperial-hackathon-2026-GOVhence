@@ -1,39 +1,113 @@
 ---
 name: develop-memory-governance
-description: Develop the BasedAI "Enterprise Memory Governance at Scale" hackathon project (permission-aware shared agent memory). Use when working on the team-one submission — building features, fixing bugs, writing tests, or reviewing the bouncer/audit/lineage code. Encodes the project's absolute security rules, architecture, conventions, and working style.
+description: Develop the BasedAI "Enterprise Memory Governance at Scale" hackathon project (permission-aware shared agent memory). Use when working on the team-one submission — building features, fixing bugs, writing tests, or reviewing the bouncer/audit/lineage code. Points to the 3 authoritative spec sources (the authority), then our current architecture, conventions, and working style. The spec — not this file — is the source of truth.
 ---
 
 # Developing: Enterprise Memory Governance at Scale (team-one)
 
-You are developing a hackathon submission for the **BasedAI track**: a permission-aware layer
-over ONE shared memory used by many AI agents, so each user retrieves only the memory items
-their role allows. Project lives in
-`UK-AI-Agent-EP5/submissions/team-one/` inside a private repo (a copy of `BasedAICo/hackathons`).
+Hackathon submission for the **BasedAI track**. Project lives in
+`UK-AI-Agent-EP5/submissions/team-one/` (a fork of `BasedAICo/hackathons`).
 
-## The 4 absolute rules — never violate these
+## ⚠️ THE SPEC IS THE AUTHORITY — read the sources, do not trust this file's gloss
 
-1. **Strict exact-match enforcement, fail-CLOSED.** The read-time access decision matches the
-   category tag EXACTLY (case- and whitespace-sensitive). NEVER normalize, interpret, fuzzy-match,
-   or LLM-guess at read time. Any mismatch / unknown tag / wrong type / internal error => DENY.
-   Failing OPEN (accidentally ALLOW) is the worst possible bug. The decision function must be
-   TOTAL (handle any input without raising). Enforce input types — reject non-set allowed-lists
-   and non-string categories, because Python's `in` silently degrades to substring/sequence match.
+The requirements live in the three sources below, NOT in this SKILL. Earlier versions of this file
+paraphrased and INVENTED requirements (e.g. "exact-match", "category tag", "case-sensitive") that the
+spec never states. Those were design choices, not requirements. **Load the sources and quote them;
+treat anything in this file beyond the verbatim quotes as our changeable design, not the spec.**
 
-2. **No LLM in the access decision.** A model may classify/label content at WRITE time only
-   (and should reuse a canonical tag vocabulary to avoid duplicate tags). The read path is pure
-   deterministic code. This is required by the track spec: "enforcement must be deterministic."
+### The 3 authoritative sources
+1. **Canonical requirements doc (most detailed):**
+   <https://docs.google.com/document/d/1sj3DdGClW9Ft-hOOmTgcHK4uumn5wrXlA6oU3nMNmMc/edit>
+   — full track requirements: objective, access-control/determinism rules, ACL sync, derived-memory
+   governance, audit, model constraints, latency, bonus challenges, deadline. *Fetch via
+   `…/export?format=txt` then follow the redirect, if the editor URL won't render.*
+2. **BasedAI event page:**
+   <https://basedai.co/events/hackathon-UK-AI-AGENT-EP5>
+   — same track requirements in event-page form, plus event logistics.
+3. **Repo brief + process:** `../../README.md` (event README — bounty/judging are a `TODO` stub),
+   `../../../CONTRIBUTING.md` (PR-per-team submission process, "touch only your folder"),
+   `../../../SECURITY.md` (never commit secrets/keys/seed phrases). *These define PROCESS, not the
+   track requirements — those are in sources 1 & 2.*
 
-3. **The audit log is a legal record, not a demo artifact.** It must be COMPLETE (every ALLOW and
-   DENY logged, 100% coverage — there is NO concept of a "sample" or trimmed audit log), append-
-   only, UTC-timestamped (high-resolution), tamper-evident (sequence number + SHA-256 hash chain),
-   and retained. A logging failure must FAIL CLOSED (refuse access; raise `AuditError`). If log
-   growth/retention ever becomes a real concern, PROPOSE the trade-off to the user — never silently
-   trim or delete records. Defang spreadsheet formula injection (values starting with `= + - @`).
+### Spec requirements — VERBATIM quotes (source 1, the canonical doc)
+Use these exact strings; do not re-summarise.
+- *"Enforces access at the retrieval layer (not application layer), and without requiring an LLM call
+  to make a permission decision."*
+- *"Classification may use an LLM at write time, but the final enforcement path must be deterministic."*
+- *"Maintain sub-200ms latency for permission checks (P99)."*
+- *"Stay synchronized with source permissions under concurrent updates."*
+- *"A summary, embedding, or note inherits the access constraints of its sources, and revoking a
+  source propagates to the derivative."*
+- *"Produce audit logs meeting regulatory requirements."*
+- *"Your submission must run on open-weight models only" — no proprietary or closed models.*
+- Bonus: *temporal access rules* (e.g. "leadership call notes unlock after 30 days"); *query-time
+  inference prevention* (detect leaked information across permission boundaries).
+- Deadline: *"Submissions close at Demo Day on 4 July — open your PR before judging begins."*
 
-4. **Enforcement and its logging live at the RETRIEVAL layer**, inside the access decision point —
-   not in an application/API layer above it.
+### What is OURS (design choices, NOT the spec — changeable, do not present as requirements)
+- Modelling access as a per-item **category tag** matched against a per-role allowed-set
+  (`check_item`). The spec says "deterministic / retrieval-layer / no-LLM-in-decision" — it does NOT
+  mandate tags, exact-string matching, or categories. Other deterministic schemes (source-ACL mirror,
+  attribute/policy rules) would also satisfy it. The access model is an OPEN design question.
+- The tamper-evidence details we added beyond "regulatory audit logs": SHA-256 hash chain, sequence
+  numbers, fsync durability, spreadsheet-formula defang, fail-closed `AuditError`. Sound, but ours.
+- "Strict exact-match, case/whitespace-sensitive, reject non-set inputs" — our hardening, not the spec.
+
+### Known unresolved
+- The system is still a stub: memory items are hardcoded; no real store, agent, tagger, or model is
+  wired yet. The "agent → tagger(LLM) → store → gated read" flow is designed but not built.
+- "Inherits the access constraints of its sources" — we implemented revocation propagation only, NOT
+  constraint inheritance. Gap vs the spec.
+- "Stay synchronized with source permissions under concurrent updates" — not addressed.
+- Latency: audit write currently reads the whole log per write (O(n)) — at-risk vs sub-200ms-at-scale.
+
+### When the spec is unclear, conflicting, or silent — use judgment, don't stall
+This applies to ANY gap: `TODO(maintainer)` stubs, two sources disagreeing, vague wording, or
+something simply not covered. Be human about it — a good engineer doesn't freeze on ambiguity or go
+robotic; they make the sensible call and keep moving. How:
+- **Prefer the more specific, more authoritative source.** The filled-in Doc/event page (sources 1 & 2)
+  beat the repo's `TODO` stub. A concrete number beats a vague phrase. The spec beats our SKILL gloss.
+- **On a conflict, take the safer / stricter reading** when security or a deadline is at stake (e.g.
+  two deadlines → aim for the earlier; ambiguous access rule → fail closed). Convenience never wins a
+  tie over leakage.
+- **Where the spec is genuinely silent, pick the most reasonable interpretation, state the assumption
+  in one line, and proceed.** Don't demand certainty that doesn't exist; don't re-open it every turn.
+- **Flag a blocker at most once.** If an ambiguity truly changes what to build, surface it briefly with
+  a recommended default — then act on that default unless told otherwise. Don't litigate, don't loop.
+- **Don't gold-plate the ambiguous bits.** Match effort to what's actually being judged; note the open
+  question for the event mentors rather than over-engineering around a guess.
+- Concrete example: deadline — repo says ~3 Jul EOD, source 1 says "PR before Demo Day, 4 July". Take
+  the earlier (3 Jul), note it, move on; confirm with a mentor if it ever matters.
+
+#### Real ambiguities that actually tripped up a past session (and the resolution)
+Learn from these so you don't repeat them:
+- **Repo brief is a stub.** `../../README.md` bounty + judging are `TODO` and the judging table is
+  marked "TODO: finalize". → The real requirements are in sources 1 & 2, not the repo. Don't conclude
+  "requirements undefined".
+- **Two different judging rubrics.** Repo stub shows generic % weights (Autonomy 30 / Innovation 25 /
+  …); sources 1 & 2 give MEASURABLE criteria (Security Correctness incl. *false-negative rate*,
+  *sub-200ms P99 latency*, Auditability). → The measurable ones are authoritative; treat the % weights
+  as a placeholder. Don't optimise to the placeholder.
+- **"Inherits the access constraints of its sources" ≠ revocation.** Easy to read our `revoked_closure`
+  as satisfying this. It does NOT — the spec wants a derivative to inherit its source's *permissions*,
+  which is a superset of "revoke source → kill derivatives". Two distinct features; we only built one.
+- **Quoting our own code as if it were the spec.** A past session asserted "per-item, exact-tag" as a
+  requirement. It is NOT in any source — it's our design. → Only quote the three sources for
+  requirements; mark our mechanisms as ours.
+- **Cognee's write-time LLM is fine.** A past session wrongly implied Cognee was disqualified for using
+  an LLM. The spec allows an LLM at WRITE time (classification); it's only banned from the permission
+  DECISION. → The reason to be cautious with Cognee is scope/time and that its access control is
+  dataset-level (not the deterministic per-decision gate the spec wants) — NOT its internal LLM.
+- **The Google Doc won't render from the editor URL.** Fetch `…/export?format=txt` and follow the
+  307 redirect to the `googleusercontent.com` export host to get the body.
+- **The whole thing is still a stub.** Items are hardcoded; there is no live store/agent/tagger/model.
+  Don't describe built features as if the end-to-end product exists — be honest about what's real.
 
 ## Architecture & current state
+
+> This describes what we BUILT so far — it is our current design, not a spec requirement. The access
+> model (per-item category tags) is an OPEN choice (see "What is OURS" above); it could change to a
+> source-ACL mirror or attribute/policy scheme and still satisfy the spec.
 
 - `bouncer.py` — the deterministic "bouncer":
   - `MemoryItem(id, category, text)`, `Decision(item, allowed, reason)`
@@ -106,14 +180,19 @@ M8 write-time LLM classification via BasedAPIs (label only, never decide).
 - **Never commit secrets.** Use `.env.example` with placeholders; keep real values local. Throwaway
   wallet only if doing the blockchain-anchoring upside.
 - The PR (at submission time) must touch ONLY the team folder. Folder names are lowercase-hyphenated.
-- Judging weights: autonomy/tech 30% · innovation 25% · use of BasedAI/sponsor tech 20% ·
-  real-world usefulness 15% · demo 10%. Deadline: submit before Demo Day (4 Jul 2026).
+- Judging: see the spec sources above — the MEASURABLE criteria (security correctness incl.
+  false-negative rate, sub-200ms P99 latency, auditability) are authoritative. The generic % weights
+  (autonomy 30 / innovation 25 / sponsor-tech 20 / usefulness 15 / demo 10) are the repo stub's
+  placeholder — don't optimise to them over the measurable ones.
+- Deadline: repo says ~3 Jul EOD; spec says "PR before Demo Day, 4 July". Aim for the earlier (3 Jul);
+  confirm with a mentor.
 
 ## Definition of done for any change
 
 1. Code is simple, readable, and explained in plain terms to the user.
-2. It honours all 4 absolute rules (no fail-open, no LLM in decision, audit complete+tamper-evident
-   +fail-closed, enforcement at retrieval layer).
+2. It honours the verbatim spec requirements above (deterministic enforcement at the retrieval layer,
+   no LLM in the permission decision, regulatory audit logs, open-weight only). Where our current
+   design adds more (fail-closed, hash-chained audit), keep that — but don't confuse it with the spec.
 3. New behaviour has a regression test; the FULL suite passes (exit code 0).
 4. You showed the user real evidence it works, and (when asked) committed/pushed to the PRIVATE repo
    after confirming no secrets and that it stayed private.
