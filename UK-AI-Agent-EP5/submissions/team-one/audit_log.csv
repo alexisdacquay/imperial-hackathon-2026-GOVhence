@@ -1,0 +1,6 @@
+timestamp,user,item_id,category,decision,reason
+2026-06-29T14:04:14.612999+00:00,bob,item1,schedules,ALLOW,category 'schedules' is in the allowed set
+2026-06-29T14:04:14.613476+00:00,bob,item2,opening-hours,ALLOW,category 'opening-hours' is in the allowed set
+2026-06-29T14:04:14.613823+00:00,bob,item3,goods-weights-volumes,ALLOW,category 'goods-weights-volumes' is in the allowed set
+2026-06-29T14:04:14.614173+00:00,bob,item4,financials,DENY,category 'financials' is NOT in the allowed set
+2026-06-29T14:04:14.614541+00:00,bob,item5,legal,DENY,category 'legal' is NOT in the allowed set
