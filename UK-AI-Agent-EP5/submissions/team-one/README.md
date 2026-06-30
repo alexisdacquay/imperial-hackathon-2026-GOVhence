@@ -17,7 +17,7 @@
 
 **Team:** team-one  ·  **Members:** `@your-handle (Name)`, …  ·  **Track:** UK-AI-Agent-EP5 — BasedAI
 
-`52 tests passing` · `Python stdlib only` · `open-weight models only` · `fail-closed by design`
+`79 tests passing` · `Python stdlib only` · `open-weight models only` · `fail-closed by design`
 
 ---
 
@@ -106,7 +106,7 @@ denied anyway. The financials and legal files? **Never even leave the store.**
 
 ## What it does — the feature lineup
 
-> Every feature below is **live and covered by automated tests** — 52 passing. ✅
+> Every feature below is **live and covered by automated tests** — 79 passing. ✅
 
 ### 1 · Deterministic access control — *the bouncer*
 One strict, exact comparison decides every item. **No AI in the decision.** Identical every time,
@@ -156,6 +156,7 @@ Who-sees-what lives in a plain editable file ([users.json](users.json)).
 - SHA-256 **hash chain** → any edit/insert/reorder is **caught**, pointing to the exact row
 - Built-in `verify()` integrity check — **court-credible** evidence
 - Standards-aligned (NIST integrity / WORM-alternative) — **no database, no blockchain needed**
+- **Checkpoint / running-tally** → catches **end-truncation** (rows shaved off the tail) a bare chain can't, keeps appends **O(1)** at any size, and mirrors the latest tally to an off-host **anchor** (the Certificate-Transparency / CloudTrail / QLDB pattern)
 
 ### 8 · No log → no access
 - If a decision can't be recorded, the access is **refused**
@@ -178,7 +179,7 @@ pip install -r requirements.txt
 python bouncer.py    # watch access decisions, live
 python memory.py     # see each role resolve to its allowed tags
 python -c "import audit; print(audit.verify())"    # prove the log is untampered
-python -m pytest -v  # all 52 tests — the proof every feature works
+python -m pytest -v  # all 79 tests — the proof every feature works
 ```
 
 ---
@@ -190,7 +191,7 @@ python -m pytest -v  # all 52 tests — the proof every feature works
 | **AI in the access decision** | **None.** Deterministic by design. (Open-weight models help only at *write* time later.) |
 | **Stack** | Python 3.13 · **standard library only** for the core — least code that works |
 | **Models** | open-weight only (BasedAPIs planned for write-time tagging + semantic retrieval) |
-| **Tests** | `pytest` — 52 covering access, fail-closed, config, lineage, audit + tamper-evidence |
+| **Tests** | `pytest` — 79 covering access, fail-closed, config, lineage, audit + tamper-evidence + checkpoint/truncation |
 
 ---
 

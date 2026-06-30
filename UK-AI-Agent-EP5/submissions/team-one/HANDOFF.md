@@ -47,17 +47,19 @@ These are the spine of the project. Any change must honour all four.
 
 ## 3. Architecture & current state (what's built)
 
-**Status: M1–M5 done. 52 automated tests pass. Next milestone: M6 (`cli.py`).**
+**Status: M1–M6 done + tamper-evident audit checkpoint/anchor. 79 automated tests pass. Next milestone: M7 (real store + open-weight embeddings).**
 
 | File | What it is |
 |------|------------|
 | `bouncer.py` | The deterministic gate. `MemoryItem(id, category, text)`, `Decision(item, allowed, reason)`, `check_item(allowed_categories, item, revoked_ids=frozenset())` — the single chokepoint; `filter_allowed(...)` — pure; `retrieve(user, allowed, items, log_path=..., revoked_ids=...)` — the AUDITED path real callers use. |
 | `memory.py` | Load-time resolvers. `load_config`/`allowed_categories_for_user` (roles→allowed set, deny beats allow, `*` wildcard) and `load_lineage`/`revoked_closure`/`revoked_ids` (lineage graph → full transitive revoked set). All fail-closed via `ConfigError`. |
-| `audit.py` | Tamper-evident log. `log_decision(...)` appends one row (`seq, timestamp, user, item_id, category, decision, reason, row_hash`), flush+fsync. `verify(path)` recomputes the hash chain. `read_log`, `AuditError`, `_defang`, `_compute_row_hash`. |
+| `audit.py` | Tamper-evident log. `log_decision(...)` appends one row (`seq…row_hash`), flush+fsync. `verify()` recomputes the hash chain AND cross-checks the checkpoint/anchor. A **checkpoint/running-tally** side file records `(count, head-hash)` per write → O(1) appends + end-truncation detection; mirrored to an off-host `.anchor`. `read_log`, `AuditError`, `_defang`. |
+| `cli.py` | The single entrypoint — `python cli.py <user>` wires loaders + bouncer + audit; `load_items()` reads the store. Invents no policy. |
 | `users.json` | Roles → allow/deny categories; users → roles. (`exec` = allow `*`, deny `legal`.) |
 | `lineage.json` | Item provenance: `derived_from` (child→parents) + `revoked` sources. |
-| `test_bouncer.py` | 52 tests incl. adversarial / fail-closed / tamper-evidence / lineage. Every fix gets a regression test here. |
-| `audit_log.csv` | The real append-only audit log (created by running the demo). Contains demo data only. |
+| `memory_store.json` | The memory items as DATA (no longer hardcoded). |
+| `test_bouncer.py` | 79 tests incl. adversarial / fail-closed / tamper-evidence / lineage / cli / checkpoint. Every fix gets a regression test here. |
+| `audit_log.csv` (+ `.checkpoint`/`.anchor`) | The runtime audit log + its tally side files — GENERATED at run time, git-ignored (`audit_log.csv*`), never committed. |
 | `SKILL.md` | The formal operating manual (rules, conventions, working style, definition of done). Load this to work on the project as an agent. |
 
 **Key design idea:** all policy work (role expansion, deny subtraction, lineage graph traversal)
@@ -87,7 +89,7 @@ python3 bouncer.py
 # 2. See roles resolve to allowed sets, and the lineage graph resolve to the revoked closure
 python3 memory.py
 
-# 3. Run the full suite — exit code 0 means all 52 pass
+# 3. Run the full suite — exit code 0 means all 79 pass
 python3 -m pytest -v
 
 # 4. Prove the audit log was not tampered with
@@ -110,8 +112,12 @@ python3 -c "import audit; print(audit.verify())"
   questions one at a time, only when that decision is actually next — not as a wall of multiple-choice.
 - **Security-first; propose, don't assume.** On any trade-off, lead with the safe option and a clear
   proposal for the user to choose. Never quietly pick convenience over completeness/safety.
-- **Ponytail principle.** Least code that genuinely solves it; reuse stdlib and existing functions;
-  fix root causes at the single chokepoint, not scattered symptoms. Flag over-engineering.
+- **Ponytail principle — follow the SOURCE, don't guess it.** Read and apply
+  <https://github.com/DietrichGebert/ponytail> (the authority, not a paraphrase). Faithful hook:
+  *"the best code is the code you never wrote"* — walk the decision ladder (need it at all? → reuse →
+  stdlib → platform → dep → one line → only then write the minimum), **stop at the first rung that
+  holds**. **Lazy, NOT negligent** — trust-boundary validation, data-loss handling, and security are
+  NEVER on the chopping block.
 - **A fix without a test rots.** Every defect fix gets a regression test in `test_bouncer.py`; run
   the FULL suite (confirm nothing old broke) before declaring done.
 - **Verify with evidence, not claims.** Run the code; show real output / exit codes / the actual
@@ -142,19 +148,20 @@ a regression test and the FULL suite passes (exit 0). 4. You showed real evidenc
   (crypto-chain signing, police/whistle-blower agents, robustness+demo generator, GUI, tag-scoping).
 - **`FEATURES.md`** — one-line datasheet of implemented features + roadmap.
 - **`ToDo_audit-log.md`** — deep audit-log roadmap + the standards/citations behind the design.
-- **`REVIEW_PROMPT.md`** — a ready-made prompt to spin up an independent peer-reviewer AI (writes to
-  `REVIEW_FINDINGS.md`, never edits code). Good for a parallel adversarial review.
+- *Independent adversarial review:* see `SKILL.md` → "Keep the trackers current" (spin a reviewer that
+  writes to a scratch file and never edits code, and/or run the stress harness) — no dedicated file.
 - **`README.md`** — the public/blog-style pitch (and the ASCII banner).
 - **`NAMING_AND_TRADEMARK_NOTES.md`** — brand decision (GOVhence = the brand; MEM-Ø = edition tag,
   not trademarked) and the trademark research.
 
 ### Milestone roadmap
 M1 bouncer ✅ · M2 tests ✅ · audit log + tamper-evidence ✅ · M3 users.json + loaders ✅ ·
-M5 lineage revocation ✅ · **M6 (next) one `cli.py` entrypoint** wiring loader+bouncer+audit, and
-retiring the hardcoded demo values · M7 real semantic store + open-weight embeddings via BasedAPIs
-(bouncer still filters results) · M8 write-time LLM classification via BasedAPIs (label only).
+M5 lineage revocation ✅ · M6 one `cli.py` entrypoint ✅ (wires loader+bouncer+audit; items as data,
+no hardcoded values) · audit checkpoint/anchor ✅ (O(1) appends + end-truncation alarm) ·
+**M7 (next) real semantic store + open-weight embeddings via BasedAPIs** (bouncer still filters
+results) · M8 write-time LLM classification via BasedAPIs (label only).
 
 ---
 
-> **First thing to do on pickup:** run `python3 -m pytest -v` and confirm **52 passed, exit code 0**.
+> **First thing to do on pickup:** run `python3 -m pytest -v` and confirm **79 passed, exit code 0**.
 > That proves the environment works and nothing is broken before you change anything.

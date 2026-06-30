@@ -118,30 +118,37 @@ Learn from these so you don't repeat them:
 - `audit.py` — tamper-evident audit log:
   - `log_decision(...)` appends one row (`seq, timestamp, user, item_id, category, decision, reason,
     row_hash`), flushes + fsyncs for durability.
-  - `verify(path)` recomputes the hash chain; returns `(ok, message)` naming the first broken row.
-  - `read_log`, `AuditError`, `_defang`, `_compute_row_hash`.
-- `memory.py` — load-time resolvers (DONE): `load_config`/`allowed_categories_for_user` (roles→set,
+  - `verify(path)` recomputes the hash chain AND cross-checks the checkpoint/anchor; returns
+    `(ok, message)` naming the first broken row.
+  - A **checkpoint / running-tally** side file (`audit_log.csv.checkpoint`) records `(count, head-hash)`
+    after every write → O(1) appends + end-truncation detection; it is itself an append-only hash chain
+    and is mirrored to an off-host `.anchor`. `read_log`, `AuditError`, `_defang`, `_compute_row_hash`.
+- `memory.py` — load-time resolvers: `load_config`/`allowed_categories_for_user` (roles→set,
   deny beats allow, `*` wildcard) + `load_lineage`/`revoked_closure`/`revoked_ids` (lineage graph →
   full transitive revoked set). All fail-closed via `ConfigError`.
-- `users.json` (roles→allow/deny categories, users→roles) and `lineage.json` (`derived_from` +
-  `revoked`). NOTE: built as JSON, not the `users.yaml` originally sketched (stdlib, no dep).
-- `test_bouncer.py` — the test suite (currently **52 tests**). Every fix gets a regression test here.
+- `cli.py` — the single entrypoint: `python cli.py <user>` wires the loaders + bouncer + audit;
+  `load_items()` reads the memory store. It invents no policy/tag/revocation — only wires real loaders
+  to the real gate, exactly as a production caller would.
+- `users.json` (roles→allow/deny categories, users→roles), `lineage.json` (`derived_from` + `revoked`),
+  and `memory_store.json` (the memory items as DATA, not hardcoded). NOTE: built as JSON, not the
+  `users.yaml` originally sketched (stdlib, no dep).
+- `test_bouncer.py` — the test suite. Every fix gets a regression test here.
 - `ToDo_audit-log.md` — audit roadmap. Deferred upside: blockchain anchoring (Kaspa — anchor only
   the chain hash, never raw records), retention segmentation, extra fields (`event_type`,
   `user_location`/`item_jurisdiction` for the cross-border bonus).
 - In-repo docs: `HANDOFF.md` (start-here orientation + OS-agnostic run steps), `TODO.md` (master
-  backlog), `FEATURES.md`, `REVIEW_PROMPT.md`, `NAMING_AND_TRADEMARK_NOTES.md`, `ToDo_audit-log.md`.
+  backlog), `FEATURES.md`, `NAMING_AND_TRADEMARK_NOTES.md`, `ToDo_audit-log.md`.
   Project display name: **GOVhence MEM-Ø** (`MEM-0` when typed). NOTE: this `SKILL.md` is itself
   committed to the repo — to hand off, copy it verbatim into the new machine's skills folder. No
   re-interpretation needed; the file IS the handover.
 
-### Milestone roadmap (build one at a time, verify before the next)
-M1 bouncer ✅ · M2 tests ✅ · audit log + tamper-evidence ✅ · M3 users.json + `memory.py` loaders ✅
-(roles→allowed; `exec` = allow `*` deny `legal`) · M5 lineage-based revocation ✅ (DERIVED_FROM graph;
-revoke a source → propagates to all derivatives; revoked beats allowed) ·
-**Next:** M6 one `cli.py` entrypoint (wire loader+bouncer+audit; retire hardcoded demo values) ·
-M7 real semantic store + open-weight embeddings via **BasedAPIs** (bouncer still filters results) ·
-M8 write-time LLM classification via BasedAPIs (label only, never decide).
+### Intended build order (each milestone verified before the next)
+> The PLAN, not the status. **Current milestone progress and test count live in `HANDOFF.md`.**
+M1 bouncer → M2 tests → audit log + tamper-evidence → M3 `users.json` + `memory.py` loaders
+(roles→allowed; `exec` = allow `*` deny `legal`) → M5 lineage revocation (revoke a source → propagates
+to all derivatives; revoked beats allowed) → M6 one `cli.py` entrypoint (wire loader+bouncer+audit; no
+hardcoded values) → M7 real semantic store + open-weight embeddings via **BasedAPIs** (bouncer still
+filters results) → M8 write-time LLM classification via BasedAPIs (label only, never decide).
 
 ## How to run
 
@@ -166,12 +173,72 @@ M8 write-time LLM classification via BasedAPIs (label only, never decide).
   questions one at a time, only when that decision is actually next — not as a wall of multiple-choice.
 - **Security-first; propose, don't assume.** On any trade-off, lead with the safe option and a clear
   proposal for the user to choose — never quietly pick convenience over completeness/safety.
-- **Ponytail principle.** Least code that genuinely solves it; reuse stdlib and existing functions;
-  fix root causes at the single chokepoint, not symptoms scattered around. Flag over-engineering.
+- **Ponytail principle — follow the SOURCE, don't guess it.** The authority is the repo, not this
+  gloss: read and apply <https://github.com/DietrichGebert/ponytail>. Faithful hook (not a substitute
+  for reading it): *"the best code is the code you never wrote"* — walk the decision ladder (does it
+  need to exist at all? → reuse what's already here → stdlib → native platform → installed dep → one
+  line → only then write the minimum) and **stop at the first rung that holds**. **Lazy about the
+  solution, never about reading; lazy, NOT negligent** — trust-boundary validation, data-loss handling,
+  and security are NEVER on the chopping block (decisive for a security project like this one).
 - **A fix without a test rots.** Every defect fix gets a regression test in `test_bouncer.py`, and
   you run the full suite (confirm nothing old broke) before declaring done.
 - **Verify with evidence, not claims.** Run the code, show real output / exit codes / the actual
   audit log; prove behaviour rather than asserting it.
+- **Don't guess external interfaces — read the real thing.** For any library, API, CLI flag, standard,
+  or version, fetch the actual docs/source before using it; never code from memory (the spec/Ponytail
+  "source is the authority" rule, generalised).
+- **Know the blast radius before touching shared code.** Before changing a shared function/signature,
+  find its call sites + tests; a local fix that breaks a caller isn't done.
+- **One logical change per commit; never leave the suite red.** Small, reviewable, revertable steps;
+  the working tree always passes.
+- **Match the surrounding code.** New code reads like its neighbours — their conventions, naming,
+  idioms, error handling. Consistency over preference.
+
+## Lessons learned (gotchas that already bit us — don't repeat them)
+
+- **No demo or runtime artifacts in committed code.** The audit log is GENERATED, not source:
+  `audit_log.csv` and its `.checkpoint`/`.anchor` side files are git-ignored (`audit_log.csv*`) and
+  must never be committed. Tests and probes write to a TEMP path, never the real log.
+- **Totality means validating element TYPES, not just the container.** A JSON value can pass an
+  `isinstance(x, list)` check yet contain a non-string / unhashable element that raises a raw
+  `TypeError` inside `set()` — escaping the fail-closed `ConfigError` contract and crashing the caller.
+  Validate every element; any malformed shape must raise `ConfigError`, never a bare exception.
+- **An item's `id` is the audit key AND the revocation key.** The store loader must require it to be a
+  NON-EMPTY STRING. A non-string id is a fail-OPEN: it can never match the revocation set and it
+  corrupts the audit trail. (`category`, by contrast, is passed through and denied by the gate.)
+- **Windows line-endings silently break a hash chain.** Open any hash-chained side file with
+  `newline=""` (or write `\n` explicitly). Text mode on Windows turns `\n` into `\r\n`, so a binary
+  tail-read sees `hash\r` while `splitlines()` sees `hash`, and the chain fails to verify on the
+  system's own untampered log.
+- **Verify by trying, not by trusting.** The line-ending bug and a fail-open id leak both slipped past
+  code review and were caught only by RUNNING the tests + the adversarial stress harness. A green
+  board that hides a real hole is a failure; prove behaviour with real output before declaring done.
+
+## Keep the trackers current (no stale files)
+
+A doc that lags the code is a bug. Any change that affects behaviour, status, or features updates the
+relevant tracker IN THE SAME change. Who owns what:
+
+| File | Holds | Update when |
+|------|-------|-------------|
+| `README.md` | the public pitch / "what it does" | a headline feature or the story changes |
+| `FEATURES.md` | one-line feature datasheet (+ test count) | a feature ships |
+| `HANDOFF.md` | START-HERE orientation + **all current status** (milestones done/next, test count, new files) | progress changes |
+| `TODO.md` | master backlog + **open bugs** | an item is added / done, or a bug is found |
+| `SKILL.md` | timeless how-to, rules, conventions, lessons (this file) | the WAY we work changes |
+| `ToDo_audit-log.md` · `NAMING_AND_TRADEMARK_NOTES.md` | their own topic | that topic changes |
+
+Rule of thumb: **status → HANDOFF · backlog/bugs → TODO · features → FEATURES + README ·
+how-to/rules/lessons → SKILL.** Never put status or open bugs in this SKILL.
+
+**SKILL is committed TWICE.** This project-folder `SKILL.md` is canonical (it ships with the project, so
+it stays portable). The copy that actually LOADS is `.claude/skills/develop-memory-governance/SKILL.md`
+— after editing this file, copy it across so the two stay byte-identical:
+`cp SKILL.md .claude/skills/develop-memory-governance/SKILL.md`. A drifted copy = a stale skill.
+
+**Independent adversarial review** (no dedicated file needed): spin a reviewer agent that reads the diff,
+writes findings to a SCRATCH file, and NEVER edits code — and/or run an adversarial stress harness.
+Verify by trying, not by trusting.
 
 ## Hard constraints (hackathon)
 
@@ -196,3 +263,22 @@ M8 write-time LLM classification via BasedAPIs (label only, never decide).
 3. New behaviour has a regression test; the FULL suite passes (exit code 0).
 4. You showed the user real evidence it works, and (when asked) committed/pushed to the PRIVATE repo
    after confirming no secrets and that it stayed private.
+5. The relevant trackers are updated in the SAME change (status → HANDOFF, features → FEATURES/README,
+   backlog/bugs → TODO) and the two SKILL copies are byte-identical — no stale file.
+
+## Milestone gate — heavier QA at each major milestone (not every change)
+
+The "Definition of done" above is the LIGHT gate. At each MAJOR milestone (a shipped feature or
+checkpoint), run the HEAVY gate too — without being asked:
+
+1. **Reality check** — every claim in the docs is TRUE and re-verified: the full suite passes at the
+   real count; the stated invariants (e.g. fail-closed, no-LLM-in-the-decision) still hold; what the
+   docs say is built actually is. Run it, don't assert it.
+2. **Adversarial stress + robustness** — hammer hostile/malformed inputs (the stress harness): wrong
+   types, unicode/homoglyphs, injection, bad config → invariant: ZERO leaks, ZERO crashes, fail-closed.
+3. **Scale (proportionate)** — spot-check the hot paths stay cheap at size (e.g. O(1) audit append; a
+   large log/retrieval stays within the latency budget). Right-size the effort; not a load test.
+4. **Security review** — an independent adversarial pass over the diff (writes findings to a scratch
+   file, never edits code): the absolute rules hold, no fail-OPEN, audit complete + tamper-evident.
+
+Findings → fix critical/cheap now, log the rest in `TODO.md`, then update the trackers.

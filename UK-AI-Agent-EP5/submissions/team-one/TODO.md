@@ -13,7 +13,10 @@
 - [x] **D4** Fail-closed logging (no log → no access) + spreadsheet-injection defang.
 - [x] **D5** Role-based config in `users.json` (allow / deny / wildcard), validated + fail-closed.
 - [x] **D6** Lineage revocation — revoke a source → propagates to all derived items (`lineage.json`).
-- [x] **D7** 52 automated tests; blog-style README.
+- [x] **D7** Automated test suite; blog-style README.
+- [x] **D8** M6 — `cli.py` single entrypoint (loaders+bouncer+audit) + `memory_store.json` (items as data, no hardcoded values); fail-open store-id leak fixed.
+- [x] **D9** Loader totality — non-string `allow`/`deny`/`category` entries fail closed (were a raw `TypeError` crash that bypassed exit-2).
+- [x] **D10** Audit **checkpoint/running-tally** — O(1) appends + end-truncation detection + self-sealing chain + off-host anchor (first concrete step of #1).
 
 ---
 
@@ -53,6 +56,9 @@
   signatures, then external **anchoring** (publish only the chain's latest hash to an outside
   place — a separate append-only file now, a chain like Kaspa later). Anchor the *hash only*,
   never raw records. (See [ToDo_audit-log.md](ToDo_audit-log.md) for the standards basis.)
+  - ✅ **First step shipped (D10):** local checkpoint + off-host anchor (count + head-hash, itself a
+    self-sealing chain) — already detects end-truncation. Remaining: HMAC/asymmetric SIGNING for
+    non-repudiation, then external/Kaspa anchoring of the latest root.
 
 ### Autonomous security agents
 - [ ] **2. "Police" agent — continuous security/rules scanner.** A standing agent that watches
