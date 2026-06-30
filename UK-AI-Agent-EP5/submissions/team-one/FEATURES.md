@@ -2,7 +2,7 @@
 
 **Governed memory for shared AI agents** — one shared memory, zero leaks, provable to auditors.
 
-## Implemented (live, 52 automated tests)
+## Implemented (live, 79 automated tests)
 - **Deterministic access control** — strict exact-match category check; no AI in the decision.
 - **Fail-closed by default** — any unknown/malformed/error case denies; never grants by accident.
 - **Adversarial-hardened** — survives wrong types, look-alike Unicode, empty profiles (no leak, no crash).
@@ -12,6 +12,9 @@
 - **Regulator-grade audit log** — every ALLOW & DENY logged: who · what · when (UTC) · outcome · why.
 - **Append-only, complete record** — no sampling, ever; full "who saw what, when" traceability.
 - **Tamper-evident** — sequence numbers + SHA-256 hash chain; `verify()` detects any edit/delete/reorder.
+- **Checkpoint / running-tally** — records (entry-count + head-hash) after every write: keeps appends **O(1)** (fast at any log size) **and** detects **end-truncation** (rows shaved off the tail) that a plain chain can't. Same pattern as Certificate Transparency / AWS CloudTrail / QLDB.
+- **Self-sealing checkpoint** — the tally is itself an append-only SHA-256 chain (the CloudTrail "digest" trick): the tamper-detector is itself tamper-evident.
+- **External anchor (mini)** — the latest tally is mirrored to a separate off-host file and cross-checked by `verify()` — the first concrete step of full external anchoring (roadmap → Kaspa).
 - **No log → no access** — an access that can't be recorded is refused.
 - **Injection-safe log** — spreadsheet-formula and row-forgery resistant.
 - **Open-weight only · Python stdlib core** — minimal dependencies; portable.

@@ -68,6 +68,12 @@ def load_config(path: Path = USERS_PATH) -> dict:
         if not isinstance(config[key], expected_type):
             raise ConfigError(f"'{key}' section must be a {expected_type.__name__}")
 
+    # Every category feeds set() membership and exact-match comparisons, so each must
+    # be a string. A non-string (or unhashable list/dict) entry would otherwise raise
+    # a RAW TypeError deep inside set(...) -- escaping ConfigError. Fail closed here.
+    if not all(isinstance(c, str) for c in config["categories"]):
+        raise ConfigError("every entry in 'categories' must be a string")
+
     return config
 
 
@@ -90,6 +96,12 @@ def categories_for_role(role_name: str, config: dict) -> set[str]:
     deny = role.get("deny", [])
     if not isinstance(allow, list) or not isinstance(deny, list):
         raise ConfigError(f"role '{role_name}': 'allow' and 'deny' must both be lists")
+    # Every allow/deny entry must be a string. Without this, a nested list/dict entry
+    # (e.g. "allow": ["schedules", ["oops"]]) raises a raw 'unhashable type' TypeError
+    # inside set(allow) below -- escaping ConfigError and CRASHING the caller (cli.main
+    # catches only ConfigError) instead of failing closed. The loader must be TOTAL.
+    if not all(isinstance(x, str) for x in allow) or not all(isinstance(x, str) for x in deny):
+        raise ConfigError(f"role '{role_name}': every 'allow'/'deny' entry must be a string")
 
     all_categories = set(config["categories"])
 

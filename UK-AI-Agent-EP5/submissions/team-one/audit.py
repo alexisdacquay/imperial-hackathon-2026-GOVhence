@@ -58,6 +58,120 @@ FIELDS = ["seq", "timestamp", "user", "item_id", "category", "decision", "reason
 GENESIS_HASH = "0" * 64
 
 
+# --- Tamper-evident CHECKPOINT (the "running tally") ----------------------
+# After every appended row we also append a tiny CHECKPOINT row recording
+# (count, head-hash). This is exactly what production verifiable-log systems do
+# (Certificate Transparency's "Signed Tree Head", AWS CloudTrail "digest files",
+# Amazon QLDB's "ledger digest"). It does double duty:
+#   1. SPEED -- the next append reads only this tally's TAIL, not the whole log,
+#      so appending stays O(1) no matter how large the log grows.
+#   2. TRUNCATION ALARM -- the tally remembers how many rows there SHOULD be, so
+#      lopping rows off the END (which a bare hash chain provably cannot detect)
+#      is caught by verify().
+# The checkpoint is ITSELF an append-only SHA-256 chain -- the tamper-detector is
+# itself tamper-evident (the CloudTrail trick). The latest tally is also mirrored
+# to a separate ANCHOR file (meant to live OFF-HOST) -- a miniature of full
+# external anchoring (roadmap #1).
+GENESIS_CP_HASH = "0" * 64
+
+
+def _checkpoint_path(path: Path) -> Path:
+    return path.with_name(path.name + ".checkpoint")
+
+
+def _anchor_path(path: Path) -> Path:
+    return path.with_name(path.name + ".anchor")
+
+
+def _tail_line(path: Path) -> "str | None":
+    """Return the last non-empty line of a file, or None -- O(1) (reads only the tail).
+
+    Safe because checkpoint/anchor rows are a fixed numeric+hex format with NO
+    embedded newlines (unlike the CSV log, whose quoted fields can contain them, so
+    the log itself can never be safely tail-read -- which is the whole reason this
+    clean-format side file exists).
+    """
+    try:
+        with path.open("rb") as f:
+            f.seek(0, 2)
+            end = f.tell()
+            if end == 0:
+                return None
+            f.seek(max(0, end - 1024))      # a tally row is < 200 bytes; 1 KB always
+            chunk = f.read()                # contains the final COMPLETE line
+    except OSError:
+        return None
+    # strip() drops any trailing \r so a \r\n-written file reads back identically to
+    # how splitlines() reads it elsewhere (Windows line-ending consistency).
+    lines = [ln.strip() for ln in chunk.decode("utf-8").split("\n") if ln.strip()]
+    return lines[-1] if lines else None
+
+
+def _compute_cp_hash(prev_cp_hash: str, count: int, head_hash: str) -> str:
+    """Chain this tally to the previous one (same idea as the row chain)."""
+    blob = "\x00".join([prev_cp_hash, str(count), head_hash]).encode("utf-8")
+    return hashlib.sha256(blob).hexdigest()
+
+
+def _read_cp_head(cp_path: Path) -> "tuple[int, str, int, str] | None":
+    """Parse the latest checkpoint row -> (count, head_hash, cp_seq, cp_hash), or None."""
+    line = _tail_line(cp_path)
+    if not line:
+        return None
+    parts = line.split(",")
+    if len(parts) != 4:
+        return None
+    try:
+        return int(parts[1]), parts[2], int(parts[0]), parts[3]
+    except ValueError:
+        return None
+
+
+def _read_all_checkpoints(cp_path: Path) -> "list[tuple[int, int, str, str]]":
+    """Every checkpoint row as (cp_seq, count, head_hash, cp_hash); [] if absent."""
+    try:
+        text = cp_path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    out: "list[tuple[int, int, str, str]]" = []
+    for ln in text.splitlines():
+        if not ln.strip():
+            continue
+        parts = ln.split(",")
+        if len(parts) != 4:
+            break
+        try:
+            out.append((int(parts[0]), int(parts[1]), parts[2], parts[3]))
+        except ValueError:
+            break
+    return out
+
+
+def _append_checkpoint(path: Path, seq: int, head_hash: str) -> None:
+    """Append one tally row (chained) + refresh the off-host anchor mirror. O(1)."""
+    cp_path = _checkpoint_path(path)
+    prev = _read_cp_head(cp_path)
+    prev_cp_seq, prev_cp_hash = (prev[2], prev[3]) if prev else (-1, GENESIS_CP_HASH)
+    cp_seq = prev_cp_seq + 1
+    count = seq + 1
+    cp_hash = _compute_cp_hash(prev_cp_hash, count, head_hash)
+    cp_line = f"{cp_seq},{count},{head_hash},{cp_hash}\n"
+    # newline="" keeps the format \n-only (no Windows \r\n translation), so the tail
+    # read and the splitlines() read agree byte-for-byte on the chained hash.
+    with cp_path.open("a", encoding="utf-8", newline="") as cf:
+        cf.write(cp_line)
+        cf.flush()
+        os.fsync(cf.fileno())
+    # Mirror the latest tally to a separate anchor file (atomic write-then-rename).
+    anchor = _anchor_path(path)
+    tmp = anchor.with_name(anchor.name + ".tmp")
+    with tmp.open("w", encoding="utf-8", newline="") as af:
+        af.write(cp_line)
+        af.flush()
+        os.fsync(af.fileno())
+    os.replace(tmp, anchor)
+
+
 def _utc_now() -> str:
     """Current time in UTC, ISO-8601 -- unambiguous across time zones for auditors."""
     return datetime.now(timezone.utc).isoformat()
@@ -110,6 +224,13 @@ def _last_link(path: Path) -> tuple[int, str]:
     For an empty/new log this is (0, GENESIS_HASH): the first record is seq 0 and
     chains from the genesis constant.
     """
+    # FAST PATH: read only the checkpoint's tail (O(1)) instead of the whole log.
+    head = _read_cp_head(_checkpoint_path(path))
+    if head is not None:
+        count, head_hash, _cp_seq, _cp_hash = head
+        return count, head_hash
+    # Fallback (rare): no checkpoint (a pre-existing or externally-built log) ->
+    # rebuild the link from the log itself. Truncation is caught by verify(), not here.
     rows = read_log(path)
     if not rows:
         return 0, GENESIS_HASH
@@ -156,6 +277,10 @@ def log_decision(user: str, item_id: str, category: str, decision: str, reason: 
             # the most recent decision (flush from Python, then fsync from the OS).
             f.flush()
             os.fsync(f.fileno())
+
+        # Append the tamper-evident checkpoint (running tally) + refresh the anchor.
+        # Inside the SAME try: a checkpoint/anchor write failure also FAILS CLOSED.
+        _append_checkpoint(path, seq, row["row_hash"])
     except OSError as e:
         raise AuditError(f"could not write audit record for user={user!r} item={item_id!r}: {e}") from e
 
@@ -196,5 +321,29 @@ def verify(path: Path = LOG_PATH) -> tuple[bool, str]:
             return False, f"row {i} (seq {seq}): hash mismatch -- this row or an earlier one was altered"
 
         prev_hash = row["row_hash"]
+
+    # --- checkpoint / anchor cross-check: catches a TRAILING TRUNCATION (rows
+    # lopped off the END) that the row chain alone provably cannot detect. ------
+    cp_rows = _read_all_checkpoints(_checkpoint_path(path))
+    if cp_rows:
+        prev_cp = GENESIS_CP_HASH
+        for i, (cp_seq, count, head_hash, cp_hash) in enumerate(cp_rows):
+            if cp_seq != i:
+                return False, f"checkpoint row {i}: seq {cp_seq} (a tally record was dropped)"
+            if _compute_cp_hash(prev_cp, count, head_hash) != cp_hash:
+                return False, f"checkpoint row {i}: hash mismatch (the tally itself was altered)"
+            prev_cp = cp_hash
+        _, latest_count, latest_head, _ = cp_rows[-1]
+        if latest_count != len(rows):
+            return False, (f"checkpoint expects {latest_count} records but the log has "
+                           f"{len(rows)} -- records were truncated from the end or inserted")
+        if latest_head != rows[-1]["row_hash"]:
+            return False, "checkpoint head-hash != log head -- the log was altered"
+        anchor_line = _tail_line(_anchor_path(path))
+        if anchor_line:
+            a = anchor_line.split(",")
+            if len(a) == 4 and (a[1] != str(latest_count) or a[2] != latest_head):
+                return False, "external anchor disagrees with the log -- tampering detected"
+        return True, f"intact: {len(rows)} records, checkpoint-sealed + anchored"
 
     return True, f"intact: {len(rows)} records form an unbroken chain"

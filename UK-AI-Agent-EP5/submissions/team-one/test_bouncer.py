@@ -17,6 +17,7 @@ import json
 import pytest
 
 import audit
+import cli
 import memory
 from bouncer import MemoryItem, check_item, filter_allowed, retrieve
 
@@ -494,3 +495,299 @@ def test_load_lineage_rejects_wrong_shapes(tmp_path):
         path.write_text(raw, encoding="utf-8")
         with pytest.raises(memory.ConfigError):
             memory.load_lineage(path)
+
+
+# --- M6: the cli.py entrypoint (load_items + main wiring) ----------------
+# M6 added ONE command-line entrypoint that wires the real loaders to the real
+# gate, retiring the hardcoded user / allowed-set / revoked-set / items. These
+# tests pin (a) the new load_items() store loader -- fail-closed exactly like the
+# memory.py loaders -- and (b) main()'s end-to-end wiring and fail-closed exit
+# codes. Like every other test here, any file/log goes to tmp_path; the real
+# audit_log.csv is never touched (main() takes a log_path seam for exactly this).
+
+def _write_store(tmp_path, data):
+    """Write a throwaway memory_store.json so tests never depend on the real one."""
+    path = tmp_path / "memory_store.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+def _allowed_ids_from_stdout(out: str) -> list[str]:
+    """Pull the ids on ALLOW lines out of cli.main()'s printed output.
+
+    A decision line is 'ALLOW <id> <reason>' or 'DENY  <id> <reason>'. Only an
+    ALLOW decision line starts with the all-caps 'ALLOW ' token (the 'Allowed
+    categories:' header does not, because match is case-sensitive)."""
+    return sorted(line.split()[1] for line in out.splitlines() if line.startswith("ALLOW "))
+
+
+# --- load_items: the happy path ------------------------------------------
+
+def test_load_items_reads_the_real_demo_store():
+    # The shipped memory_store.json loads into the 6 expected MemoryItems, with
+    # categories passed through verbatim. Pins the demo store against silent drift.
+    items = cli.load_items()                       # default real STORE_PATH (read-only)
+    assert all(isinstance(i, MemoryItem) for i in items)
+    assert [i.id for i in items] == ["item1", "item2", "item3", "item3-summary",
+                                     "item4", "item5"]
+    by_id = {i.id: i.category for i in items}
+    assert by_id["item1"] == "schedules"
+    assert by_id["item5"] == "legal"
+
+
+def test_load_items_valid_store_builds_correct_memoryitems(tmp_path):
+    store = {"items": [{"id": "a", "category": "schedules", "text": "hi"},
+                       {"id": "b", "category": "legal", "text": "bye"}]}
+    items = cli.load_items(_write_store(tmp_path, store))
+    assert [(i.id, i.category, i.text) for i in items] == [("a", "schedules", "hi"),
+                                                           ("b", "legal", "bye")]
+
+
+def test_load_items_comment_key_is_ignored(tmp_path):
+    # The leading '_comment' pseudo-comment (JSON has no real comments) sits beside
+    # 'items' and must neither become an item nor cause a failure.
+    store = {"_comment": "a note, not data",
+             "items": [{"id": "item1", "category": "schedules", "text": "x"}]}
+    items = cli.load_items(_write_store(tmp_path, store))
+    assert [i.id for i in items] == ["item1"]
+
+
+def test_load_items_empty_store_is_allowed_and_returns_empty(tmp_path):
+    # A structurally valid but empty store is the SAFE direction (the user simply
+    # sees nothing). It must NOT raise -- only structural problems are errors.
+    assert cli.load_items(_write_store(tmp_path, {"items": []})) == []
+
+
+# --- load_items: fail-closed, exactly like the memory.py loaders ----------
+
+def test_load_items_missing_file_fails_closed(tmp_path):
+    with pytest.raises(memory.ConfigError):
+        cli.load_items(tmp_path / "does_not_exist.json")
+
+
+def test_load_items_bad_json_fails_closed(tmp_path):
+    path = tmp_path / "memory_store.json"
+    path.write_text("{ not valid json ", encoding="utf-8")
+    with pytest.raises(memory.ConfigError):
+        cli.load_items(path)
+
+
+def test_load_items_top_level_not_dict_fails_closed(tmp_path):
+    path = tmp_path / "memory_store.json"
+    path.write_text(json.dumps(["item1", "item2"]), encoding="utf-8")   # a list, not an object
+    with pytest.raises(memory.ConfigError):
+        cli.load_items(path)
+
+
+def test_load_items_missing_or_nonlist_items_fails_closed(tmp_path):
+    # No 'items' key, or 'items' is the wrong type -> fail closed (never an empty load).
+    for bad in [{}, {"items": "notalist"}, {"items": {"id": "x"}}]:
+        with pytest.raises(memory.ConfigError):
+            cli.load_items(_write_store(tmp_path, bad))
+
+
+def test_load_items_entry_not_a_dict_fails_closed(tmp_path):
+    # A single bad entry locks the WHOLE store (fail-closed, no partial load) -- the
+    # first entry here is valid to prove the good one is not returned regardless.
+    store = {"items": [{"id": "ok", "category": "schedules", "text": "x"}, "i-am-a-string"]}
+    with pytest.raises(memory.ConfigError):
+        cli.load_items(_write_store(tmp_path, store))
+
+
+def test_load_items_entry_missing_id_fails_closed(tmp_path):
+    store = {"items": [{"category": "schedules", "text": "no id here"}]}
+    with pytest.raises(memory.ConfigError):
+        cli.load_items(_write_store(tmp_path, store))
+
+
+def test_load_items_non_string_or_empty_id_fails_closed(tmp_path):
+    # REGRESSION (fail-open leak): 'id' is the audit key AND the revocation key. A
+    # non-string or empty id must FAIL CLOSED -- a numeric/None id would corrupt the
+    # audit trail and silently escape id-based revocation. (Before the M6 hardening,
+    # a non-string id was passed straight through and served on its category.)
+    for bad_id in [123, None, "", ["item1"], {"x": 1}]:
+        store = {"items": [{"id": bad_id, "category": "schedules", "text": "x"}]}
+        with pytest.raises(memory.ConfigError):
+            cli.load_items(_write_store(tmp_path, store))
+
+
+# --- load_items: the critical security property (untagged => DENY) --------
+
+def test_load_items_missing_category_is_denied_end_to_end(tmp_path):
+    # An item with no 'category' loads (category becomes None -- the loader invents
+    # nothing) but is DENIED by the gate, and the DENY is still logged. Untagged
+    # content is never retrievable, even for a permitted user.
+    store = {"items": [{"id": "untagged", "text": "secret with no tag"}]}
+    items = cli.load_items(_write_store(tmp_path, store))
+    assert items[0].category is None               # passed through, not invented
+    log = tmp_path / "audit.csv"
+    assert retrieve("bob", BOB, items, log_path=log) == []   # denied
+    d = check_item(BOB, items[0])
+    assert d.allowed is False and "not a string" in d.reason
+    assert len(audit.read_log(path=log)) == 1      # the DENY was still logged (100% coverage)
+
+
+def test_load_items_non_string_category_is_denied_end_to_end(tmp_path):
+    # A present-but-non-string category (e.g. a list from a malformed file) is passed
+    # through verbatim and DENIED by the gate -- read time never coerces/repairs a tag.
+    store = {"items": [{"id": "badtag", "category": ["schedules"], "text": "x"}]}
+    items = cli.load_items(_write_store(tmp_path, store))
+    assert items[0].category == ["schedules"]      # unmodified
+    log = tmp_path / "audit.csv"
+    assert retrieve("bob", BOB, items, log_path=log) == []
+    assert check_item(BOB, items[0]).allowed is False
+
+
+# --- main(): end-to-end wiring against the real config --------------------
+
+def test_cli_bob_exit_zero_and_logs_every_decision(tmp_path):
+    # Happy path: a known user runs through loader+gate+audit, exits 0, and EVERY
+    # store item's decision is written to the temp log (100% coverage), intact.
+    log = tmp_path / "audit.csv"
+    assert cli.main(["bob"], log_path=log) == 0
+    assert len(audit.read_log(path=log)) == 6      # one row per store item
+    ok, _ = audit.verify(log)
+    assert ok is True
+
+
+def test_cli_bob_returns_only_item2(tmp_path, capsys):
+    # bob (driver): item1/item3/item3-summary revoked, item4/item5 outside his
+    # categories -> only item2 (opening-hours) is allowed.
+    assert cli.main(["bob"], log_path=tmp_path / "audit.csv") == 0
+    assert _allowed_ids_from_stdout(capsys.readouterr().out) == ["item2"]
+
+
+def test_cli_alice_sees_financials_not_legal_not_revoked(tmp_path, capsys):
+    # alice (exec, allow * deny legal): sees financials, NOT legal (deny beats
+    # allow), NOT the revoked items -> exactly {item2, item4}.
+    log = tmp_path / "audit.csv"
+    assert cli.main(["alice"], log_path=log) == 0
+    assert _allowed_ids_from_stdout(capsys.readouterr().out) == ["item2", "item4"]
+    decisions = {r["item_id"]: r["decision"] for r in audit.read_log(path=log)}
+    assert decisions["item4"] == "ALLOW"           # financials: allowed
+    assert decisions["item5"] == "DENY"            # legal: denied (deny beats allow)
+    assert decisions["item1"] == "DENY"            # revoked source
+    assert decisions["item3-summary"] == "DENY"    # revoked transitively (2 hops)
+
+
+def test_cli_summary_reports_the_actual_log_path(tmp_path, capsys):
+    # REGRESSION: the summary line must name the log it ACTUALLY wrote to, not the
+    # hardcoded default -- a legal record must not misstate its own location.
+    assert cli.main(["bob"], log_path=tmp_path / "my_temp_audit.csv") == 0
+    out = capsys.readouterr().out
+    assert "my_temp_audit.csv" in out
+    assert "audit_log.csv" not in out
+
+
+# --- main(): fail-closed exit codes ---------------------------------------
+
+def test_cli_unknown_user_fails_closed_exit_2_no_log(tmp_path, capsys):
+    # An unknown user is refused BEFORE any retrieval: exit 2, and NOTHING is logged
+    # (no access was even attempted).
+    log = tmp_path / "audit.csv"
+    assert cli.main(["mallory"], log_path=log) == 2
+    assert "ACCESS DENIED" in capsys.readouterr().err
+    assert audit.read_log(path=log) == []          # nothing served or logged
+
+
+def test_cli_unwritable_log_fails_closed_exit_3(tmp_path, capsys):
+    # No log -> no access: if the audit record cannot be written, the run is refused
+    # (exit 3), never served unlogged. Parent dir is absent so the open() fails.
+    bad = tmp_path / "missing-dir" / "audit.csv"
+    assert cli.main(["bob"], log_path=bad) == 3
+    assert "ACCESS DENIED" in capsys.readouterr().err
+    assert not bad.exists()
+
+
+def test_cli_missing_user_argument_exits(tmp_path):
+    # argparse contract: no positional 'user' -> SystemExit (usage error), never a
+    # normal return or a run with a missing principal.
+    with pytest.raises(SystemExit):
+        cli.main([], log_path=tmp_path / "audit.csv")
+
+
+# --- Loader totality: malformed-but-list config must still fail CLOSED ----
+# Red-team finding (SEM-3): a list whose ELEMENTS are the wrong type slips past the
+# "is it a list?" check and raises a raw, unhashable TypeError inside set(...), which
+# is NOT a ConfigError -- so it would crash cli.main (which catches only ConfigError)
+# instead of failing closed with exit 2. The loader must be TOTAL over malformed input.
+
+def test_role_allow_with_unhashable_element_fails_closed():
+    config = sample_config()
+    config["roles"]["driver"]["allow"] = ["schedules", ["nested"]]   # a list inside the list
+    with pytest.raises(memory.ConfigError):
+        memory.allowed_categories_for_user("bob", config)
+
+
+def test_role_deny_with_dict_element_fails_closed():
+    config = sample_config()
+    config["roles"]["exec"]["deny"] = [{"legal": True}]              # a dict inside the list
+    with pytest.raises(memory.ConfigError):
+        memory.allowed_categories_for_user("alice", config)
+
+
+def test_non_string_category_entry_fails_closed(tmp_path):
+    bad = {"categories": ["schedules", ["oops"]],                   # a list as a category entry
+           "roles": {"d": {"allow": ["schedules"]}}, "users": {"u": "d"}}
+    path = _write_config(tmp_path, bad)
+    with pytest.raises(memory.ConfigError):
+        memory.load_config(path)
+
+
+# --- Checkpoint / running-tally: O(1) appends + TRUNCATION detection ------
+# A bare hash chain cannot detect rows lopped off the END of the log (the remaining
+# rows still chain cleanly). The checkpoint records (count, head-hash) after every
+# write, is itself an append-only hash chain, and is mirrored to an off-host anchor.
+# verify() cross-checks all three, so a trailing truncation is now CAUGHT.
+
+def _write_n(log, n):
+    for i in range(n):
+        audit.log_decision(f"u{i}", f"it{i}", "schedules", "ALLOW", "ok", path=log)
+
+
+def test_checkpoint_and_anchor_are_created_and_verify(tmp_path):
+    log = tmp_path / "audit.csv"
+    _write_n(log, 3)
+    assert (tmp_path / "audit.csv.checkpoint").exists()
+    assert (tmp_path / "audit.csv.anchor").exists()
+    ok, msg = audit.verify(log)
+    assert ok is True and "checkpoint-sealed" in msg
+
+
+def test_trailing_truncation_is_detected_by_the_checkpoint(tmp_path):
+    # THE headline: shave the most-recent row off the LOG only. The chain still
+    # looks intact, but the checkpoint remembers there should be 5 rows -> CAUGHT.
+    log = tmp_path / "audit.csv"
+    _write_n(log, 5)
+    assert audit.verify(log)[0] is True
+    rows = log.read_text(encoding="utf-8").splitlines()
+    log.write_text("\n".join(rows[:-1]) + "\n", encoding="utf-8")     # drop the last record
+    ok, msg = audit.verify(log)
+    assert ok is False and "truncated" in msg
+
+
+def test_tampering_the_checkpoint_itself_is_detected(tmp_path):
+    # The tamper-detector is itself tamper-evident: editing a tally row breaks the
+    # checkpoint's own hash chain.
+    log = tmp_path / "audit.csv"
+    _write_n(log, 3)
+    cp = tmp_path / "audit.csv.checkpoint"
+    lines = cp.read_text(encoding="utf-8").splitlines()
+    parts = lines[-1].split(",")
+    parts[1] = str(int(parts[1]) + 99)                               # forge the count
+    lines[-1] = ",".join(parts)
+    cp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert audit.verify(log)[0] is False
+
+
+def test_external_anchor_disagreement_is_flagged(tmp_path):
+    # If the off-host anchor disagrees with the log+checkpoint, verify() flags it --
+    # so hiding a truncation requires rewriting the anchor too (which lives off-host).
+    log = tmp_path / "audit.csv"
+    _write_n(log, 3)
+    anchor = tmp_path / "audit.csv.anchor"
+    a = anchor.read_text(encoding="utf-8").strip().split(",")
+    a[1] = str(int(a[1]) + 1)                                        # anchor now disagrees
+    anchor.write_text(",".join(a) + "\n", encoding="utf-8")
+    ok, msg = audit.verify(log)
+    assert ok is False and "anchor" in msg

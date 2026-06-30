@@ -19,6 +19,31 @@
 
 ## New backlog (numbered)
 
+### 🔴 Priority — security hardening (from the 2026-06-30 adversarial red-team + stress harness)
+> Surfaced by the multi-agent red-team and the adversarial stress harness (39k+ cases).
+> Listed FIRST: these are correctness / availability gaps in the audit + access core.
+> (The end-truncation gap found alongside these is already CLOSED by the checkpoint/anchor.)
+- [ ] **R1. Concurrent audit writes are not serialized (seq-race).** Two callers writing to the
+  same log at once both read the same last seq+hash (no lock) → duplicate seq → the hash chain
+  forks and `verify()` breaks permanently, and both accesses are served before any verify runs.
+  The O(1) checkpoint did NOT fix this. Fix: serialize writers — a single-writer queue, SQLite
+  WAL, or the sharded-chains-+-Merkle-root design (which also scales and pairs with #1 anchoring).
+  **Not a file lock.** (Spec: *"stay synchronized with source permissions under concurrent updates."*)
+- [ ] **R2. Audit write is not TOTAL on two adversarial values (crashes instead of failing closed).**
+  (a) A field larger than Python's CSV limit (~131 072 bytes) raises `csv.Error` on the next read —
+  not an `OSError`, so it escapes `AuditError`, crashes `cli.main` (which catches only
+  ConfigError/AuditError), and permanently bricks reading the log. (b) An unpaired UTF-16 surrogate
+  (e.g. `\ud800`) as a category raises `UnicodeEncodeError` on hash/CSV write — same uncaught-crash
+  path. Fix (cheap, like the loader-totality fix): cap field length and wrap the write so ANY failure
+  becomes `AuditError` (fail closed), never a raw exception.
+- [ ] **R3. Derived memory does NOT inherit its source's access constraints (possible leak).** Today
+  only REVOCATION propagates down the lineage; a derived item (summary/embedding) is gated purely by
+  its OWN tag. So a summary tagged `schedules` derived from a `financials` source is served to a user
+  who may NOT see financials. The spec explicitly requires: *"a summary, embedding, or note inherits
+  the access constraints of its sources."* Fix: at WRITE time (Scribe, #6/#8) the derived unit must
+  carry the MOST-RESTRICTIVE tag across itself + all its sources. Directly relates to the
+  content-channel gap documented in #8.
+
 ### Integrity & non-repudiation (crypto-chain)
 - [ ] **1. Crypto-chain certification of logs.** Strengthen the audit log so records are
   **non-corruptible, non-changeable, and non-refutable**. The current SHA-256 hash chain (D3)
@@ -133,6 +158,25 @@
     across a boundary.
   - **Action:** write a short design note fixing the unit = chunk/record, the write-time-immutable
     rule, fail-closed-on-untagged, and tag-in-metadata-not-body — then enforce it in the store (M7).
+  - **Red-team finding (2026-06-30) — the CONTENT-CHANNEL leak this item must close.** The read gate
+    decides on the TAG only and NEVER inspects the unit's TEXT (by design: no LLM at read time, rule 2).
+    So a unit correctly tagged with an *allowed* category whose BODY carries *forbidden*-category
+    content is served verbatim to an unauthorized reader. The gate cannot and should not catch this —
+    the defense MUST live at WRITE time. Concrete failures this item must prevent:
+    - **Mixed-content unit:** a `schedules` item whose text also contains
+      "`… [FINANCIALS] Q3 revenue 4.2M, margin 18%  [LEGAL] penalty clause £50k`" — `bob` (no
+      financials/legal) receives all of it, because the carrier tag `schedules` is allowed.
+    - **Mis-tagged / poisoned unit:** content written under a more-permissive tag than its true
+      sensitivity (author error, or an injection that plants content under a benign tag).
+    - **Required rules (defense is all write-time):**
+      1. **Split mixed-content units BEFORE tagging** — never tag a mixed unit with the more-permissive
+         label; each governed unit must be single-sensitivity.
+      2. **Tag = the MOST-RESTRICTIVE category present** in the unit, never the most permissive.
+      3. The write-time classifier (**#6 "Scribe"**) classifies on the ACTUAL content, not the author's
+         claimed tag; a unit whose content out-ranks its tag is re-tagged up or split.
+      4. Governed unit small enough (chunk/record) that "one unit = one sensitivity" actually holds.
+    - Pairs with **#6** (Scribe classifies content), **#7** (size tripwire flags a unit that grew after
+      tagging), and the metadata-not-body rule above (so injection can't forge the carrier tag).
 
 ---
 
