@@ -193,6 +193,12 @@ filters results) → M8 write-time LLM classification via BasedAPIs (label only,
   the working tree always passes.
 - **Match the surrounding code.** New code reads like its neighbours — their conventions, naming,
   idioms, error handling. Consistency over preference.
+- **Portability (Windows + macOS).** Code must run identically on both: `pathlib.Path` (never string
+  paths/separators), `encoding="utf-8"` on ALL file I/O, `newline=""` (or explicit `\n`) for any hashed/
+  byte-sensitive file, `tempfile`/`tmp_path` not `/tmp` or `C:\…`, ASCII committed console output,
+  stdlib-only deps. It's ENFORCED, not hoped: `team-one/.gitattributes` pins LF everywhere and the CI
+  matrix runs the suite on Windows + macOS + Linux each push. For OS-specific behaviour (e.g. file
+  locking for R1), use a cross-platform mechanism, never raw `fcntl`/`msvcrt`.
 
 ## Lessons learned (gotchas that already bit us — don't repeat them)
 

@@ -1,0 +1,56 @@
+name: tests
+
+# Multi-platform test matrix + security scans for the team-one submission.
+#
+# - Portability: the pytest suite runs on Windows + macOS + Linux on every push, so
+#   cross-platform breakage (e.g. line-ending / encoding / path bugs) is caught
+#   automatically — the team develops on both Windows and macOS.
+# - Security: the adversarial fail-closed / injection / homoglyph / tamper-evidence
+#   tests live INSIDE the pytest suite (so they run on all three OSes as behavioural
+#   pen-tests), plus a dedicated job for static security analysis (bandit) and
+#   dependency-CVE scanning (pip-audit). Secret scanning is handled by secret-scan.yml.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: UK-AI-Agent-EP5/submissions/team-one
+
+jobs:
+  tests:
+    name: pytest (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test deps
+        run: pip install -r requirements.txt
+      - name: Run the suite (incl. adversarial / fail-closed / tamper tests)
+        run: python -m pytest -q
+
+  security:
+    name: security scans (bandit + pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install security tooling
+        run: pip install bandit pip-audit
+      - name: Static security scan (bandit) — fail on medium+ severity
+        run: bandit -r . -x ./test_bouncer.py --severity-level medium
+      - name: Dependency vulnerability scan (pip-audit)
+        run: pip-audit -r requirements.txt

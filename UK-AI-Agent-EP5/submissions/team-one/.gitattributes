@@ -1,0 +1,6 @@
+# Multi-platform portability (Windows + macOS + Linux).
+# Normalise ALL text files to LF in the working tree on every OS, regardless of each
+# developer's local `core.autocrlf`. This stops CRLF from sneaking in and breaking
+# byte-sensitive files such as the hash-chained audit log + checkpoint (the \r\n bug
+# we already hit). LF is the single canonical line ending for this submission.
+* text=auto eol=lf
