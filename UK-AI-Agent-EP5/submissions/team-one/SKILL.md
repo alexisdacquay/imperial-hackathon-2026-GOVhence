@@ -137,7 +137,8 @@ Learn from these so you don't repeat them:
   the chain hash, never raw records), retention segmentation, extra fields (`event_type`,
   `user_location`/`item_jurisdiction` for the cross-border bonus).
 - In-repo docs: `HANDOFF.md` (start-here orientation + OS-agnostic run steps), `TODO.md` (master
-  backlog), `FEATURES.md`, `NAMING_AND_TRADEMARK_NOTES.md`, `ToDo_audit-log.md`.
+  backlog), `FEATURES.md`, `PRD.md` (next-phase pipeline requirements), `NAMING_AND_TRADEMARK_NOTES.md`,
+  `ToDo_audit-log.md`.
   Project display name: **GOVhence MEM-Ø** (`MEM-0` when typed). NOTE: this `SKILL.md` is itself
   committed to the repo — to hand off, copy it verbatim into the new machine's skills folder. No
   re-interpretation needed; the file IS the handover.

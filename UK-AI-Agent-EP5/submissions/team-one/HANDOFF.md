@@ -147,6 +147,8 @@ a regression test and the FULL suite passes (exit 0). 4. You showed real evidenc
 - **`TODO.md`** — the master backlog (numbered, self-contained). What's done + the new feature ideas
   (crypto-chain signing, police/whistle-blower agents, robustness+demo generator, GUI, tag-scoping).
 - **`FEATURES.md`** — one-line datasheet of implemented features + roadmap.
+- **`PRD.md`** — next-phase requirements: the live memory-governance pipeline (intake → analysis →
+  deterministic retrieval → response → async memory-write) on top of the current core.
 - **`ToDo_audit-log.md`** — deep audit-log roadmap + the standards/citations behind the design.
 - *Independent adversarial review:* see `SKILL.md` → "Keep the trackers current" (spin a reviewer that
   writes to a scratch file and never edits code, and/or run the stress harness) — no dedicated file.
