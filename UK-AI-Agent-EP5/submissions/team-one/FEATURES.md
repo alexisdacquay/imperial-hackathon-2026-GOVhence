@@ -5,8 +5,8 @@
 ## Implemented (live, covered by the automated test suite — exit 0 = all pass)
 - **Live GOVhence pipeline** *(branch)* — end-to-end: classify → tag-relevance pre-filter → **deterministic
   bouncer access gate (audited)** → top-k MemoryLane → Responder; write path Judge → Memoriser → store.
-  The LLM roles are deterministic stubs behind a clean seam (swap in an open-weight model later);
-  **relevance never bypasses access** and no LLM is in the decision.
+  The **Classifier is a real open-weight LLM**; Judge/Memoriser/Responder are deterministic stubs
+  behind a clean seam (swap in models later); **relevance never bypasses access** and no LLM is in the decision.
 - **Deterministic access control** — strict exact-match category check; no AI in the decision.
 - **Fail-closed by default** — any unknown/malformed/error case denies; never grants by accident.
 - **Adversarial-hardened** — survives wrong types, look-alike Unicode, empty profiles (no leak, no crash).
@@ -25,6 +25,17 @@
   length-capped, and any residual write failure raises `AuditError` (access refused, never unlogged).
 - **Injection-safe log** — spreadsheet-formula and row-forgery resistant.
 - **Open-weight only · Python stdlib core** — minimal dependencies; portable.
+
+## Component: Classifier (LLM)
+*Turns a user message into tags so the Bouncer, Judge and Memoriser can do their jobs. One section per main component; more to follow (Judge, Memoriser, Responder, Bouncer, GOVhence).*
+- **Real open-weight LLM** — `glm-5.2` via `https://api.mor.org/api/v1` (OpenAI-compatible); swappable to any open-weight endpoint (incl. local ollama) with **zero code change** via `.env` (`LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY`).
+- **Purpose-framed** — the system prompt tells it *why* it exists: precise, reusable tags feed the Bouncer (retrieval), Judge (read/write decision) and Memoriser (storage).
+- **Profile-aware disambiguation** — uses the user's **role + department** (never the name) as context: e.g. "bread" → `food` for a driver, but `product`/`manufacturing` for a baker; "water" → utility vs leak vs hazard by context.
+- **Content tags only** — user/access tags come from the trusted profile, **never** the LLM; any role/department the model emits is stripped from content (identity never leaks into content).
+- **Tag hygiene** — lowercase, hyphenated multi-word, de-duplicated, capped, and **reuses existing tags** to avoid near-duplicate proliferation.
+- **Guardrails** — strict-JSON output; **prompt-injection resistant** (treats the message as data, not instructions); makes **no access decisions**; temperature 0 for stable tags.
+- **Fail-safe** — if the model is slow/offline it **degrades gracefully** to rule-based tags; the pipeline never crashes on the LLM.
+- **Tested** — deterministic unit tests via an injected fake LLM (parsing, hygiene, reuse, cap, identity-strip, context-not-name, fallback) + a live smoke test against the real model.
 
 ## On the roadmap
 - **Crypto-chain certification** — signed/non-repudiable records + external anchoring (e.g. Kaspa).
