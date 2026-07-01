@@ -15,7 +15,7 @@ bouncer is preserved in v0.1/bouncer.py and snaps back into this step later.
 import json
 from pathlib import Path
 
-_USERS_PATH = Path(__file__).with_name("users.json")
+_USERS_PATH = Path(__file__).parent.parent / "data" / "users.json"
 
 
 def allowed_categories(user, users_path=_USERS_PATH):

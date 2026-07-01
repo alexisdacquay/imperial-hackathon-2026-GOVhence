@@ -22,7 +22,7 @@ def _load_dotenv():
     environment. Keeps secrets out of code/git. Precedence: the REAL environment always
     wins over `.env`; within `.env`, the LAST occurrence of a key wins (so appending a
     new block cleanly overrides an earlier one instead of being silently ignored)."""
-    env_file = Path(__file__).with_name(".env")
+    env_file = Path(__file__).parent.parent / ".env"   # project root (team-one/)
     if not env_file.exists():
         return
     values = {}

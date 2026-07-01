@@ -11,7 +11,7 @@ from pathlib import Path
 
 import bouncer
 
-USERS = Path(__file__).with_name("users.json")
+USERS = Path(__file__).parent.parent / "data" / "users.json"
 
 # a tiny memory set with access categories (independent of the seed file)
 MEM = [

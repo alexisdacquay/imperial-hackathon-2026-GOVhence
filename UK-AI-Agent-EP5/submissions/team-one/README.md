@@ -21,6 +21,33 @@
 
 ---
 
+## Project structure
+
+```
+team-one/
+├── README.md              you are here
+├── requirements.txt  .env.example
+├── src/                   the pipeline — govhence (orchestrator) +
+│                          classifier · judge · bouncer · memoriser · responder · llm
+├── data/                  users.json (roles/access) · cocoshamem.seed.json (seed memories)
+├── tests/                 pytest suite (+ conftest)
+├── docs/                  PRD.md · HANDOFF.md · ROADMAP.md · FEATURES.md · TODO.md · …
+├── GUI/                   browser Audit Console (open GUI/index.html)
+└── archive/v0.1/          the original engine (audit + lineage + RBAC), parked for re-integration
+```
+
+**Run it:**
+```bash
+python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
+pip install -r requirements.txt                        # only pytest, for tests
+cp .env.example .env                                   # add your LLM_API_KEY
+
+python src/govhence.py bob "where is the best sandwich in London?"   # one turn, end-to-end
+python -m pytest tests/ -q                                           # the suite
+```
+
+---
+
 ## The problem, in one breath
 
 ```
@@ -85,7 +112,7 @@ regulator.
 ## See it in 10 seconds
 
 ```
-$ python bouncer.py
+$ python archive/v0.1/bouncer.py
 ────────────────────────────────────────────────────────────────────────
 User: bob (driver, logistics)   allowed: schedules, opening-hours, goods-weights-volumes
 Revoked items: item1                                       (a leaked source)
@@ -119,7 +146,7 @@ Unknown tag? Malformed input? Bad config? Look-alike Unicode trickery? **→ DEN
 - When in doubt, **withhold** — leaking is never an option
 
 ### 3 · Role-based permissions, *outside the code*
-Who-sees-what lives in a plain editable file ([users.json](users.json)).
+Who-sees-what lives in a plain editable file ([data/users.json](data/users.json)).
 - Roles → allowed categories
 - "Allow everything **except** X" (e.g. an exec who sees all *but* legal)
 - Admins change access by editing one file — **zero code changes**
@@ -171,15 +198,13 @@ Who-sees-what lives in a plain editable file ([users.json](users.json)).
 ## Run it yourself
 
 ```bash
-# Python 3.11+ (built on 3.13). Core needs NO external services.
-
-python -m venv .venv && .venv/Scripts/activate     # macOS/Linux: source .venv/bin/activate
-pip install -r requirements.txt
-
+# The features above describe the original engine, now parked in archive/v0.1/
+# (being re-integrated into the src/ pipeline). Run its self-contained demo + suite:
+cd archive/v0.1
 python bouncer.py    # watch access decisions, live
 python memory.py     # see each role resolve to its allowed tags
 python -c "import audit; print(audit.verify())"    # prove the log is untampered
-python -m pytest -v  # the whole suite — the proof every feature works (exit 0 = all pass)
+python -m pytest -q  # the v0.1 suite (107 tests)
 ```
 
 ---
@@ -201,7 +226,7 @@ python -m pytest -v  # the whole suite — the proof every feature works (exit 0
   *already-permitted* content
 - **Write-time classification** by an open-weight model — it *labels*, it never *decides*
 - **External anchoring** of the audit fingerprint (e.g. Kaspa) — beat even an insider who
-  rewrites the whole local log ([design notes](ToDo_audit-log.md))
+  rewrites the whole local log ([design notes](docs/audit-roadmap.md))
 - **Sub-200ms at scale** + live sync with external source ACLs
 
 ---

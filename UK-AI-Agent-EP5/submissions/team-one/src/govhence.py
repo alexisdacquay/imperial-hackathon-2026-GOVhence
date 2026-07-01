@@ -24,9 +24,9 @@ import memoriser
 import responder
 
 # --- data stores: loaded from JSON, never hardcoded in the script ---------------
-_HERE = Path(__file__).parent
-USERS_PATH = _HERE / "users.json"              # the user base / profile store
-MEMORY_PATH = _HERE / "cocoshamem.seed.json"   # CocoShaMem seed (shared memories)
+_DATA = Path(__file__).parent.parent / "data"  # sibling of src/
+USERS_PATH = _DATA / "users.json"              # the user base / profile store
+MEMORY_PATH = _DATA / "cocoshamem.seed.json"   # CocoShaMem seed (shared memories)
 
 
 def _load_profiles(path=USERS_PATH):
