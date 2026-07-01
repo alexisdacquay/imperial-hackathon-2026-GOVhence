@@ -119,6 +119,8 @@ def memorise(message: str, cls: Classification, known_tags: set[str] | None = No
     """Memoriser (quality gate): distil a durable memory from the ORIGINAL message (no LLM
     expansion -- authenticity), refine tags (reuse existing), and assign the ACCESS category.
     Returns None if the candidate isn't quality memory content."""
+    if cls.kind == "query":
+        return None  # a bare question is not durable knowledge (defensive; the Judge also gates this)
     text = " ".join(str(message).split()).strip().rstrip(".!?") + "."
     if len(text) < 8 or not cls.content_tags:
         return None  # quality gate: reject thin content

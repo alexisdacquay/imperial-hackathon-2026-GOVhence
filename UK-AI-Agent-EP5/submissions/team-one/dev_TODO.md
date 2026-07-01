@@ -6,7 +6,9 @@
 > LLM roles are rule-based **stubs** behind a clean seam (no open-weight model wired here yet); **none
 > makes the access decision** (absolute rule 2).
 
-## Status of increment 1 — NOT green yet: `python -m pytest -q` → **93 pass, 1 FAIL**
+## Status of increment 1 — ✅ GREEN: `python -m pytest -q` → **94 pass** · CLI demo verified
+> Demo: bob's "sandwich in London?" retrieves permitted London memories (financials stay DENIED
+> though tagged `london`); a statement is memorised. `python pipeline.py bob "<msg>"`.
 - [x] `bouncer.MemoryItem` += `tags` (relevance only, never access)   *(committed ae9e857)*
 - [x] `users.json` += `shared` category (driver; exec via `*`)         *(committed ae9e857)*
 - [x] `cli.load_items` reads `tags`
@@ -16,12 +18,9 @@
 - [x] `.gitignore` += `cocoshamem.json` (runtime store; seed committed)
 - [x] `test_pipeline.py`
 
-## FIRST thing to fix — the 1 red test
-`test_pipeline.py::test_memoriser_rejects_a_bare_query` fails: `agents.memorise()` doesn't reject a
-query on its own (it only checks length + tags). In the real flow the **Judge** gates this (memorise
-is only called when `judge_write_candidate` is True, which already rejects queries), so pick one:
-- **(a) recommended:** make `agents.memorise` return `None` when `cls.kind == "query"` — one defensive line, then re-run.
-- (b) change the test to feed a statement (memorise trusts the Judge upstream).
+## ✅ Fixed — the 1 red test
+`agents.memorise()` now returns `None` for a query (`cls.kind == "query"`) — defensive; the Judge
+gates it upstream too. Suite green (94).
 
 ## Then (increment 2+)
 - Eyeball the CLI: `python pipeline.py bob "where can I get a sandwich in London?"` and
