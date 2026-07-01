@@ -185,6 +185,16 @@
     - Pairs with **#6** (Scribe classifies content), **#7** (size tripwire flags a unit that grew after
       tagging), and the metadata-not-body rule above (so injection can't forge the carrier tag).
 
+### Governance & data-source integration *(salvaged from PRD-original §4.2 / §10)*
+- [ ] **Datasource ACL sync.** Real sources (email / SharePoint / Teams / NFS) carry their **own** ACLs;
+  those must **sync into CocoShaMem scoping** rather than be re-invented — the spec's *"stay synchronized
+  with source permissions under concurrent updates."* Define the connectors + the sync mechanism (and how
+  a revocation at the source propagates into the store). Hackathon uses a simulated source; prod is the
+  open question.
+- [ ] **Memorisation consent.** Is the user's implicit *"desire to be memorised"* sufficient, or is
+  **explicit user/operator consent** required before writing content into a corporate-wide store? A
+  governance decision (privacy + provenance) to make before the Memoriser writes for real.
+
 ---
 
 ## Suggested ordering (not fixed)

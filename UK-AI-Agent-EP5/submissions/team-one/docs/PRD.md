@@ -192,7 +192,13 @@ flowchart TD
 - **No LLM in the access decision.** The **Bouncer** is the sole access gate: script-only, deterministic,
   fail-closed. LLMs classify / judge / memorise / respond — they never *gate* access.
 - **Open-weight models only** (Llama/Qwen/Mistral via BasedAPIs) — no closed models anywhere in the loop.
-- **Audit** — every retrieval decision (ALLOW + DENY) is logged; append-only, tamper-evident, complete.
+- **Audit — a legal record; no log → no access.** Every retrieval decision (ALLOW + DENY) is logged;
+  append-only, tamper-evident, complete. A logging failure **fails closed** — access is refused rather
+  than granted unlogged.
+- **Derived-memory access inheritance.** A memory derived from others (summary / note / embedding) is
+  tagged the **most-restrictive** access category across itself + all its sources, resolved at WRITE
+  time by trusted code (no LLM); the Bouncer then enforces that tag. So a derivative can never leak what
+  its sources protected. *(The R3 engineering task tracks the implementation.)*
 - **Async memory-write** — the write path (Memoriser) runs asynchronously and must **not** block the
   response. Reading memory is the first-stage step *before* the Responder.
 - **Tag hygiene** — reuse existing tags; single-word or hyphenated; no near-duplicate proliferation
