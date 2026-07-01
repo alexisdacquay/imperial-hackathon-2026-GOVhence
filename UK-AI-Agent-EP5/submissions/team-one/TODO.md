@@ -32,13 +32,14 @@
   The O(1) checkpoint did NOT fix this. Fix: serialize writers — a single-writer queue, SQLite
   WAL, or the sharded-chains-+-Merkle-root design (which also scales and pairs with #1 anchoring).
   **Not a file lock.** (Spec: *"stay synchronized with source permissions under concurrent updates."*)
-- [ ] **R2. Audit write is not TOTAL on two adversarial values (crashes instead of failing closed).**
-  (a) A field larger than Python's CSV limit (~131 072 bytes) raises `csv.Error` on the next read —
-  not an `OSError`, so it escapes `AuditError`, crashes `cli.main` (which catches only
-  ConfigError/AuditError), and permanently bricks reading the log. (b) An unpaired UTF-16 surrogate
-  (e.g. `\ud800`) as a category raises `UnicodeEncodeError` on hash/CSV write — same uncaught-crash
-  path. Fix (cheap, like the loader-totality fix): cap field length and wrap the write so ANY failure
-  becomes `AuditError` (fail closed), never a raw exception.
+- [x] **R2. Audit write is not TOTAL on two adversarial values (crashes instead of failing closed).**
+  ✅ **DONE (commit `3144c4f`, branch `feat/govhence-pipeline`).** (a) A field larger than Python's CSV
+  limit (~131 072 bytes) raised `csv.Error`; (b) an unpaired UTF-16 surrogate (e.g. `\ud800`) raised
+  `UnicodeEncodeError` on hash/CSV write — both escaped `AuditError` and crashed instead of failing
+  closed. Fixed at the single chokepoint `audit._defang`: every field is now encode-safe (surrogates
+  replaced) and length-capped (8192 chars) BEFORE it is hashed or written, so the hash chain stays
+  self-consistent; plus `log_decision` now also catches `csv.Error`/`UnicodeError`/`ValueError` and
+  re-raises as `AuditError` (defence-in-depth, fail closed). Regression tests added; suite green.
 - [ ] **R3. Derived memory does NOT inherit its source's access constraints (possible leak).** Today
   only REVOCATION propagates down the lineage; a derived item (summary/embedding) is gated purely by
   its OWN tag. So a summary tagged `schedules` derived from a `financials` source is served to a user

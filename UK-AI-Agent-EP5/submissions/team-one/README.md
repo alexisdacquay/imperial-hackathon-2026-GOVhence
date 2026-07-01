@@ -17,7 +17,7 @@
 
 **Team:** team-one  ·  **Members:** `@your-handle (Name)`, …  ·  **Track:** UK-AI-Agent-EP5 — BasedAI
 
-`79 tests passing` · `Python stdlib only` · `open-weight models only` · `fail-closed by design`
+`106 tests passing` · `Python stdlib only` · `open-weight models only` · `fail-closed by design`
 
 ---
 
@@ -106,7 +106,7 @@ denied anyway. The financials and legal files? **Never even leave the store.**
 
 ## What it does — the feature lineup
 
-> Every feature below is **live and covered by automated tests** — 79 passing. ✅
+> Every feature below is **live and covered by automated tests** — 106 passing. ✅
 
 ### 1 · Deterministic access control — *the bouncer*
 One strict, exact comparison decides every item. **No AI in the decision.** Identical every time,
@@ -179,7 +179,7 @@ pip install -r requirements.txt
 python bouncer.py    # watch access decisions, live
 python memory.py     # see each role resolve to its allowed tags
 python -c "import audit; print(audit.verify())"    # prove the log is untampered
-python -m pytest -v  # all 79 tests — the proof every feature works
+python -m pytest -v  # all 106 tests — the proof every feature works
 ```
 
 ---
@@ -191,7 +191,7 @@ python -m pytest -v  # all 79 tests — the proof every feature works
 | **AI in the access decision** | **None.** Deterministic by design. (Open-weight models help only at *write* time later.) |
 | **Stack** | Python 3.13 · **standard library only** for the core — least code that works |
 | **Models** | open-weight only (BasedAPIs planned for write-time tagging + semantic retrieval) |
-| **Tests** | `pytest` — 79 covering access, fail-closed, config, lineage, audit + tamper-evidence + checkpoint/truncation |
+| **Tests** | `pytest` — 106 covering access, fail-closed, config, lineage, audit + tamper-evidence + checkpoint/truncation + audit-write totality (R2) + the live pipeline |
 
 ---
 

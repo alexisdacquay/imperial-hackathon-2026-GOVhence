@@ -47,18 +47,28 @@ These are the spine of the project. Any change must honour all four.
 
 ## 3. Architecture & current state (what's built)
 
-**Status: M1–M6 done + tamper-evident audit checkpoint/anchor. 79 automated tests pass. Next milestone: M7 (real store + open-weight embeddings).**
+**Status (branch `feat/govhence-pipeline`): M1–M6 done + tamper-evident audit checkpoint/anchor,
+PLUS the live GOVhence pipeline scaffold (Classifier/Judge/Memoriser/Responder as deterministic
+stubs behind a clean seam + end-to-end read/write flow) AND security fix R2 (audit write is now
+TOTAL — fail-closed on adversarial values). 106 automated tests pass.**
+> `main` is the stable baseline (M1–M6, no pipeline, 79 tests). The pipeline + R2 live on
+> `feat/govhence-pipeline` — work here. Next: R1 (serialize concurrent audit writes) and R3
+> (derived-memory inherits its source's access constraints), then wire a real open-weight model
+> (M7/M8) behind the `agents.*` seam. See `dev_TODO.md` (this branch) and `TODO.md`.
 
 | File | What it is |
 |------|------------|
 | `bouncer.py` | The deterministic gate. `MemoryItem(id, category, text)`, `Decision(item, allowed, reason)`, `check_item(allowed_categories, item, revoked_ids=frozenset())` — the single chokepoint; `filter_allowed(...)` — pure; `retrieve(user, allowed, items, log_path=..., revoked_ids=...)` — the AUDITED path real callers use. |
 | `memory.py` | Load-time resolvers. `load_config`/`allowed_categories_for_user` (roles→allowed set, deny beats allow, `*` wildcard) and `load_lineage`/`revoked_closure`/`revoked_ids` (lineage graph → full transitive revoked set). All fail-closed via `ConfigError`. |
-| `audit.py` | Tamper-evident log. `log_decision(...)` appends one row (`seq…row_hash`), flush+fsync. `verify()` recomputes the hash chain AND cross-checks the checkpoint/anchor. A **checkpoint/running-tally** side file records `(count, head-hash)` per write → O(1) appends + end-truncation detection; mirrored to an off-host `.anchor`. `read_log`, `AuditError`, `_defang`. |
+| `audit.py` | Tamper-evident log. `log_decision(...)` appends one row (`seq…row_hash`), flush+fsync. `verify()` recomputes the hash chain AND cross-checks the checkpoint/anchor. A **checkpoint/running-tally** side file records `(count, head-hash)` per write → O(1) appends + end-truncation detection; mirrored to an off-host `.anchor`. `read_log`, `AuditError`, `_defang` — **`_defang` now also makes every field encode-safe + length-capped so no adversarial value can crash the write (R2, fail-closed).** |
 | `cli.py` | The single entrypoint — `python cli.py <user>` wires loaders + bouncer + audit; `load_items()` reads the store. Invents no policy. |
-| `users.json` | Roles → allow/deny categories; users → roles. (`exec` = allow `*`, deny `legal`.) |
+| `agents.py` *(branch)* | The PRD's LLM roles — Classifier / Judge / Memoriser / Responder — as DETERMINISTIC rule-based stubs behind a stable seam. **NONE makes the access decision** (rule 2); the Memoriser assigns an access category at WRITE time. Swap a stub for a real open-weight model (BasedAPIs) by re-implementing the same signature. |
+| `pipeline.py` *(branch)* | End-to-end orchestration: verify → classify → tag-relevance pre-filter → **`bouncer.retrieve` (the audited access gate)** → top-k MemoryLane → Responder; write path Judge → Memoriser → append runtime store. Relevance NEVER bypasses access. `python pipeline.py <user> "<msg>"`, `--demo`. |
+| `cocoshamem.seed.json` *(branch)* | Seed for CocoShaMem (the corporate shared memory). Runtime store `cocoshamem.json` is regenerated from it and git-ignored. |
+| `users.json` | Roles → allow/deny categories; users → roles. (`exec` = allow `*`, deny `legal`; `driver` also allows `shared`.) |
 | `lineage.json` | Item provenance: `derived_from` (child→parents) + `revoked` sources. |
 | `memory_store.json` | The memory items as DATA (no longer hardcoded). |
-| `test_bouncer.py` | 79 tests incl. adversarial / fail-closed / tamper-evidence / lineage / cli / checkpoint. Every fix gets a regression test here. |
+| `test_bouncer.py` / `test_pipeline.py` | 106 tests incl. adversarial / fail-closed / tamper-evidence / lineage / cli / checkpoint / R2-totality / pipeline (classify, judge, memorise, relevance-never-bypasses-access, memory-loop). Every fix gets a regression test here. |
 | `audit_log.csv` (+ `.checkpoint`/`.anchor`) | The runtime audit log + its tally side files — GENERATED at run time, git-ignored (`audit_log.csv*`), never committed. |
 | `SKILL.md` | The formal operating manual (rules, conventions, working style, definition of done). Load this to work on the project as an agent. |
 
@@ -89,7 +99,7 @@ python3 bouncer.py
 # 2. See roles resolve to allowed sets, and the lineage graph resolve to the revoked closure
 python3 memory.py
 
-# 3. Run the full suite — exit code 0 means all 79 pass
+# 3. Run the full suite — exit code 0 means all pass (106 on this branch, 79 on main)
 python3 -m pytest -v
 
 # 4. Prove the audit log was not tampered with
@@ -160,10 +170,16 @@ a regression test and the FULL suite passes (exit 0). 4. You showed real evidenc
 M1 bouncer ✅ · M2 tests ✅ · audit log + tamper-evidence ✅ · M3 users.json + loaders ✅ ·
 M5 lineage revocation ✅ · M6 one `cli.py` entrypoint ✅ (wires loader+bouncer+audit; items as data,
 no hardcoded values) · audit checkpoint/anchor ✅ (O(1) appends + end-truncation alarm) ·
-**M7 (next) real semantic store + open-weight embeddings via BasedAPIs** (bouncer still filters
-results) · M8 write-time LLM classification via BasedAPIs (label only).
+live pipeline scaffold ✅ *(branch: agents/pipeline stubs, end-to-end)* · R2 audit-write totality ✅
+*(branch: fail-closed on adversarial values)* · **R1 (next) serialize concurrent audit writes**
+(cross-platform lock — NOT raw fcntl/msvcrt) · **R3 derived-memory inherits source constraints**
+(most-restrictive category at write time; ordering via an explicit rank map in config) ·
+**M7 real semantic store + open-weight embeddings via BasedAPIs** (bouncer still filters results) ·
+M8 write-time LLM classification via BasedAPIs (label only).
 
 ---
 
-> **First thing to do on pickup:** run `python3 -m pytest -v` and confirm **79 passed, exit code 0**.
+> **First thing to do on pickup:** confirm you're on the right branch (`git branch --show-current`
+> → `feat/govhence-pipeline` for pipeline/R-series work; `main` for the stable baseline), then run
+> `python3 -m pytest -v` and confirm **106 passed, exit code 0** on the branch (79 on `main`).
 > That proves the environment works and nothing is broken before you change anything.
