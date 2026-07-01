@@ -62,6 +62,11 @@ temp/
 # locally. The glob also covers audit_log.csv.checkpoint / .anchor / .tmp.
 audit_log.csv*
 
+# Runtime memory store — generated WHEN THE APP RUNS from cocoshamem.seed.json.
+# The seed is source (committed); the live store is a demo/runtime artifact.
+cocoshamem.json
+cocoshamem.json.tmp
+
 # ─────────────────────────────────────────────────────────────
 # Editor & OS noise
 # ─────────────────────────────────────────────────────────────
