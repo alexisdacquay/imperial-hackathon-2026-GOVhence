@@ -27,6 +27,11 @@ WHY IT MATTERS — your tags are consumed by three downstream components:
   - the MEMORISER reuses your tags when it stores a new memory.
 Precise, reusable tags make all three work; vague or noisy tags break them.
 
+USE THE USER'S CONTEXT: you are given the user's role and department (never their name).
+Use them to DISAMBIGUATE meaning. E.g. "bread" -> "food" for a driver, but a "product" /
+"manufacturing" item for a factory baker; "water" may be "utility", "leak", or "hazard"
+depending on the user's world. Choose tags that fit that user's context.
+
 RULES FOR TAGS:
   - CONTENT only: what the message is about (e.g. "food", "london", "schedule"). Give 2-6 tags.
   - Prefer GENERAL, organisation-wide reusable tags, not user-specific ones.
@@ -94,11 +99,17 @@ def classify(message, profile, known_tags=None, chat=llm.chat):
     Falls back to rule-based content tags if the LLM is unavailable or returns junk.
     """
     known = list(known_tags or [])
-    user_prompt = (f"Known tags to reuse when suitable: {known}\n\n"
+    role, dept = profile.get("role", ""), profile.get("department", "")
+    # Role + department give the LLM disambiguation context. NAME is never sent.
+    context = f"User context (for disambiguation only): role={role or 'unknown'}, department={dept or 'unknown'}."
+    user_prompt = (f"{context}\n\nKnown tags to reuse when suitable: {known}\n\n"
                    f"User message to classify:\n{message}")
     try:
         raw = chat(SYSTEM_PROMPT, user_prompt, json_mode=True, temperature=0.0)
         content = _hygiene(json.loads(raw).get("content_tags", []), known)
     except (llm.LLMError, ValueError, TypeError, AttributeError):
         content = _fallback_content_tags(message, known)   # graceful degradation
+    # Guardrail: content tags must never carry the user's role/department (that's identity).
+    ident = {_normalise(role), _normalise(dept)}
+    content = [t for t in content if t not in ident]
     return Classification(content_tags=content, user_tags=_user_tags(profile))

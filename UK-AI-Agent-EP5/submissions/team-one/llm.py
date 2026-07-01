@@ -14,6 +14,25 @@ import json
 import os
 import urllib.error
 import urllib.request
+from pathlib import Path
+
+
+def _load_dotenv():
+    """Load KEY=VALUE lines from a local, gitignored `.env` (next to this file) into the
+    environment. Never overrides variables already set in the real environment. Keeps
+    secrets (the API key) out of the code and out of git."""
+    env_file = Path(__file__).with_name(".env")
+    if not env_file.exists():
+        return
+    for raw in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
 
 
 class LLMError(Exception):

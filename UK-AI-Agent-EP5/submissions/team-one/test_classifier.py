@@ -48,6 +48,25 @@ def test_reuses_known_tag_no_near_duplicate():
     assert c.content_tags == ["location", "food"]      # 'Location' folded onto known 'location'
 
 
+def test_profile_role_dept_used_as_context_but_not_name():
+    captured = {}
+
+    def rec(system, user, **kw):
+        captured["user"] = user
+        return '{"content_tags": ["food"]}'
+
+    prof = {"name": "Bob Smith", "role": "driver", "department": "logistics"}
+    classifier.classify("bread", prof, chat=rec)
+    assert "driver" in captured["user"] and "logistics" in captured["user"]   # context sent
+    assert "Bob" not in captured["user"] and "Smith" not in captured["user"]  # name NEVER sent
+
+
+def test_content_tags_strip_role_and_department():
+    # Even if the LLM emits role/department as content tags, they're stripped (identity, not content).
+    c = classifier.classify("m", BOB, chat=_fake('{"content_tags": ["driver", "logistics", "food"]}'))
+    assert c.content_tags == ["food"]
+
+
 def test_caps_tag_count():
     many = json.dumps({"content_tags": [f"t{i}" for i in range(20)]})
     c = classifier.classify("m", BOB, chat=_fake(many))
