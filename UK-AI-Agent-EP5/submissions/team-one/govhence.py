@@ -1,4 +1,6 @@
-"""GOVhence — the SOLE orchestrator (walking-skeleton placeholder — NO real LLM yet).
+"""GOVhence — the SOLE orchestrator. A deterministic SCRIPT by design, NOT an LLM:
+its job is pure routing/sequencing/waiting, so it stays out of the trust path and
+can't be prompt-injected. The intelligence lives in the LLM roles it calls.
 
 BUILD TARGET #1 of PRD-2026-07-01.md: run the whole chain end-to-end with the
 simplest possible components and NO security/audit burden, to prove the process
