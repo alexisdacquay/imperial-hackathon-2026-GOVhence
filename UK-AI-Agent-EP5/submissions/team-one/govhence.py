@@ -55,8 +55,11 @@ def handle(user, message):
         return
     print(f"GOVhence             | profile (from store, never LLM) = {profile}")
 
-    # GOVhence -> Classifier -> GOVhence  (LLM-backed; known tags passed in for reuse)
-    known = sorted({t for m in MEMORY for t in m.get("tags", [])})
+    # GOVhence -> Classifier -> GOVhence  (LLM-backed). Scope the reusable tag vocabulary
+    # to what THIS user may see, so we never feed the model tags of memories they can't
+    # access (access-scoped known tags; the Bouncer still independently enforces retrieval).
+    allowed = bouncer.allowed_categories(user)
+    known = sorted({t for m in MEMORY if m.get("category") in allowed for t in m.get("tags", [])})
     cls = classifier.classify(message, profile, known_tags=known)
     print(f"GOVhence -> Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
 

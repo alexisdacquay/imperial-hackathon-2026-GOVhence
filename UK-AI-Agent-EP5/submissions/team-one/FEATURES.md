@@ -28,14 +28,22 @@
 
 ## Component: Classifier (LLM)
 *Turns a user message into tags so the Bouncer, Judge and Memoriser can do their jobs. One section per main component; more to follow (Judge, Memoriser, Responder, Bouncer, GOVhence).*
-- **Real open-weight LLM** — `glm-5.2` via `https://api.mor.org/api/v1` (OpenAI-compatible); swappable to any open-weight endpoint (incl. local ollama) with **zero code change** via `.env` (`LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY`).
+- **Real open-weight LLM** — currently `mistral-small-latest` (fast, sub-second tagging); swappable to any open-weight, OpenAI-compatible endpoint with **zero code change** via `.env` (`LLM_BASE_URL`/`LLM_MODEL`/`LLM_API_KEY`), per-component.
 - **Purpose-framed** — the system prompt tells it *why* it exists: precise, reusable tags feed the Bouncer (retrieval), Judge (read/write decision) and Memoriser (storage).
 - **Profile-aware disambiguation** — uses the user's **role + department** (never the name) as context: e.g. "bread" → `food` for a driver, but `product`/`manufacturing` for a baker; "water" → utility vs leak vs hazard by context.
 - **Content tags only** — user/access tags come from the trusted profile, **never** the LLM; any role/department the model emits is stripped from content (identity never leaks into content).
+- **Access-scoped vocabulary** — the reusable tags shown to the model are limited to memories the user may see; tags of forbidden-category memories never leave for the LLM.
 - **Tag hygiene** — lowercase, hyphenated multi-word, de-duplicated, capped, and **reuses existing tags** to avoid near-duplicate proliferation.
 - **Guardrails** — strict-JSON output; **prompt-injection resistant** (treats the message as data, not instructions); makes **no access decisions**; temperature 0 for stable tags.
 - **Fail-safe** — if the model is slow/offline it **degrades gracefully** to rule-based tags; the pipeline never crashes on the LLM.
 - **Tested** — deterministic unit tests via an injected fake LLM (parsing, hygiene, reuse, cap, identity-strip, context-not-name, fallback) + a live smoke test against the real model.
+
+## Security by design — governed tags (injection-safe)
+*No in-band format to forge: access and links are structured fields set by trusted code, never patterns parsed from the message or the LLM.*
+- **Known vocabulary, fail-closed** — an access category must be a known value; unknown/forged → deny.
+- **Out of the LLM's reach** — categories, links and identity are metadata; the LLM handles text only, and never sets who-can-see.
+- **Content tags ≠ access** — the LLM's tags drive relevance only (proven by test); they cannot impersonate an access token.
+- **Inheritance by reference** — derivatives link to sources by ID and inherit the most-restrictive access *(next: with the Memoriser)*.
 
 ## On the roadmap
 - **Crypto-chain certification** — signed/non-repudiable records + external anchoring (e.g. Kaspa).
