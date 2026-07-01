@@ -21,12 +21,15 @@ class MemoryItem:
     """One piece of memory in the shared store.
 
     - id:       a short name so we can refer to it (e.g. "item1")
-    - category: the single tag that decides who may see it (e.g. "schedules")
+    - category: the single tag that decides WHO MAY SEE IT (e.g. "schedules") -- the ACCESS tag.
     - text:     the actual content
+    - tags:     content tags used for RELEVANCE matching only (e.g. ("food", "london")).
+                These NEVER affect access -- the access decision is `category in allowed`, full stop.
     """
     id: str
     category: str
     text: str
+    tags: tuple[str, ...] = ()
 
 
 @dataclass

@@ -6,12 +6,13 @@
     "opening-hours",
     "goods-weights-volumes",
     "financials",
-    "legal"
+    "legal",
+    "shared"
   ],
 
   "roles": {
     "driver": {
-      "allow": ["schedules", "opening-hours", "goods-weights-volumes"]
+      "allow": ["schedules", "opening-hours", "goods-weights-volumes", "shared"]
     },
     "exec": {
       "allow": ["*"],
