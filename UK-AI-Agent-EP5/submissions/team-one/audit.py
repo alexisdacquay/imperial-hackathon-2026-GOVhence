@@ -45,6 +45,7 @@ verify() recomputes the whole chain and reports the first broken row.
 import csv
 import hashlib
 import os
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -147,6 +148,21 @@ def _read_all_checkpoints(cp_path: Path) -> "list[tuple[int, int, str, str]]":
     return out
 
 
+def _replace_with_retry(src: Path, dst: Path, attempts: int = 5, _sleep=time.sleep) -> None:
+    """os.replace(src, dst), retried on a TRANSIENT Windows PermissionError -- the atomic rename can
+    briefly lose to an AV/indexer holding the just-written target under rapid writes. Only this
+    IDEMPOTENT rename is retried (never the appends). After the last attempt the error RE-RAISES, so a
+    genuine failure still propagates (-> OSError -> AuditError -> fail-closed). No effect off-Windows."""
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            _sleep(0.02 * (i + 1))
+
+
 def _append_checkpoint(path: Path, seq: int, head_hash: str) -> None:
     """Append one tally row (chained) + refresh the off-host anchor mirror. O(1)."""
     cp_path = _checkpoint_path(path)
@@ -169,7 +185,7 @@ def _append_checkpoint(path: Path, seq: int, head_hash: str) -> None:
         af.write(cp_line)
         af.flush()
         os.fsync(af.fileno())
-    os.replace(tmp, anchor)
+    _replace_with_retry(tmp, anchor)   # retry the atomic rename on transient Windows locks
 
 
 def _utc_now() -> str:

@@ -791,3 +791,38 @@ def test_external_anchor_disagreement_is_flagged(tmp_path):
     anchor.write_text(",".join(a) + "\n", encoding="utf-8")
     ok, msg = audit.verify(log)
     assert ok is False and "anchor" in msg
+
+
+# --- anchor rename robustness: transient Windows lock retried, real failure re-raised ---
+# The intense stress found that under rapid writes on Windows the anchor's atomic os.replace can
+# briefly lose to an AV/indexer (transient PermissionError). We retry it -- but a PERSISTENT failure
+# must still propagate so the audit write fails closed (no leak, just a refused access).
+
+def test_anchor_replace_retries_a_transient_permission_error(tmp_path, monkeypatch):
+    src = tmp_path / "a.tmp"
+    src.write_text("new", encoding="utf-8")
+    dst = tmp_path / "a"
+    calls = {"n": 0}
+    real = audit.os.replace
+
+    def flaky(s, d):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise PermissionError("target locked by scanner")
+        return real(s, d)
+
+    monkeypatch.setattr(audit.os, "replace", flaky)
+    audit._replace_with_retry(src, dst, _sleep=lambda _s: None)
+    assert calls["n"] == 3 and dst.read_text(encoding="utf-8") == "new"   # retried, then succeeded
+
+
+def test_anchor_replace_reraises_after_giving_up(tmp_path, monkeypatch):
+    src = tmp_path / "a.tmp"
+    src.write_text("new", encoding="utf-8")
+
+    def always_locked(s, d):
+        raise PermissionError("always locked")
+
+    monkeypatch.setattr(audit.os, "replace", always_locked)
+    with pytest.raises(PermissionError):   # persistent failure still propagates (fail-closed)
+        audit._replace_with_retry(src, tmp_path / "a", attempts=3, _sleep=lambda _s: None)
