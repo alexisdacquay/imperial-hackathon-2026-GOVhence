@@ -6,7 +6,7 @@
 > LLM roles are rule-based **stubs** behind a clean seam (no open-weight model wired here yet); **none
 > makes the access decision** (absolute rule 2).
 
-## Status — ✅ GREEN: **106 pass** · `python pipeline.py --demo` runs the full story · **5 increments + R2 done**
+## Status — ✅ GREEN: **suite passes (exit 0)** · `python pipeline.py --demo` runs the full story · **5 increments + R2 done**
 > (1) working scaffold · (2) relevance ranking + top-k cap · (3) salient content-word tags + proven
 > memory loop · (4) security pass (injection blocked · total on adversarial input · write-time RBAC
 > scoping) · (5) scripted `--demo` · **R2 audit-write totality (commit `3144c4f`)**. Run one turn:
@@ -22,7 +22,7 @@
 
 ## ✅ Fixed — the 1 red test
 `agents.memorise()` now returns `None` for a query (`cls.kind == "query"`) — defensive; the Judge
-gates it upstream too. Suite green (94).
+gates it upstream too. Suite green.
 
 ## Remaining (next increments)
 **Blocking security hardening (do before ship — see `TODO.md`):**

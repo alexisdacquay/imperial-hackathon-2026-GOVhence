@@ -50,8 +50,8 @@ These are the spine of the project. Any change must honour all four.
 **Status (branch `feat/govhence-pipeline`): M1–M6 done + tamper-evident audit checkpoint/anchor,
 PLUS the live GOVhence pipeline scaffold (Classifier/Judge/Memoriser/Responder as deterministic
 stubs behind a clean seam + end-to-end read/write flow) AND security fix R2 (audit write is now
-TOTAL — fail-closed on adversarial values). 106 automated tests pass.**
-> `main` is the stable baseline (M1–M6, no pipeline, 79 tests). The pipeline + R2 live on
+TOTAL — fail-closed on adversarial values). The automated suite passes (exit 0).**
+> `main` is the stable baseline (M1–M6, no pipeline). The pipeline + R2 live on
 > `feat/govhence-pipeline` — work here. Next: R1 (serialize concurrent audit writes) and R3
 > (derived-memory inherits its source's access constraints), then wire a real open-weight model
 > (M7/M8) behind the `agents.*` seam. See `dev_TODO.md` (this branch) and `TODO.md`.
@@ -68,7 +68,7 @@ TOTAL — fail-closed on adversarial values). 106 automated tests pass.**
 | `users.json` | Roles → allow/deny categories; users → roles. (`exec` = allow `*`, deny `legal`; `driver` also allows `shared`.) |
 | `lineage.json` | Item provenance: `derived_from` (child→parents) + `revoked` sources. |
 | `memory_store.json` | The memory items as DATA (no longer hardcoded). |
-| `test_bouncer.py` / `test_pipeline.py` | 106 tests incl. adversarial / fail-closed / tamper-evidence / lineage / cli / checkpoint / R2-totality / pipeline (classify, judge, memorise, relevance-never-bypasses-access, memory-loop). Every fix gets a regression test here. |
+| `test_bouncer.py` / `test_pipeline.py` | The test suite: adversarial / fail-closed / tamper-evidence / lineage / cli / checkpoint / R2-totality / pipeline (classify, judge, memorise, relevance-never-bypasses-access, memory-loop). Every fix gets a regression test here. |
 | `audit_log.csv` (+ `.checkpoint`/`.anchor`) | The runtime audit log + its tally side files — GENERATED at run time, git-ignored (`audit_log.csv*`), never committed. |
 | `SKILL.md` | The formal operating manual (rules, conventions, working style, definition of done). Load this to work on the project as an agent. |
 
@@ -99,7 +99,7 @@ python3 bouncer.py
 # 2. See roles resolve to allowed sets, and the lineage graph resolve to the revoked closure
 python3 memory.py
 
-# 3. Run the full suite — exit code 0 means all pass (106 on this branch, 79 on main)
+# 3. Run the full suite — exit code 0 means all pass
 python3 -m pytest -v
 
 # 4. Prove the audit log was not tampered with
@@ -181,5 +181,5 @@ M8 write-time LLM classification via BasedAPIs (label only).
 
 > **First thing to do on pickup:** confirm you're on the right branch (`git branch --show-current`
 > → `feat/govhence-pipeline` for pipeline/R-series work; `main` for the stable baseline), then run
-> `python3 -m pytest -v` and confirm **106 passed, exit code 0** on the branch (79 on `main`).
+> `python3 -m pytest -v` and confirm **exit code 0 (all pass)**.
 > That proves the environment works and nothing is broken before you change anything.

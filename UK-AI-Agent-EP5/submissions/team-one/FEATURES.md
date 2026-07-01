@@ -2,7 +2,7 @@
 
 **Governed memory for shared AI agents** — one shared memory, zero leaks, provable to auditors.
 
-## Implemented (live, 106 automated tests on branch `feat/govhence-pipeline`; 79 on `main`)
+## Implemented (live, covered by the automated test suite — exit 0 = all pass)
 - **Live GOVhence pipeline** *(branch)* — end-to-end: classify → tag-relevance pre-filter → **deterministic
   bouncer access gate (audited)** → top-k MemoryLane → Responder; write path Judge → Memoriser → store.
   The LLM roles are deterministic stubs behind a clean seam (swap in an open-weight model later);
