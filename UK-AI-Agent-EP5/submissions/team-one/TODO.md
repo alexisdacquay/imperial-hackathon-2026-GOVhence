@@ -6,31 +6,6 @@
 
 ---
 
-## 🚧 In progress — GOVhence live pipeline ([PRD.md](PRD.md)), branch `feat/govhence-pipeline`
-> Autonomous working-first build. `main` preserved at `7f5493a`. Reuse bouncer/memory/audit + stdlib
-> (Ponytail); **keep the name `bouncer`** (= the PRD's DeterminExtractor). Stub LLM agents (no
-> open-weight model wired here yet — rule-based, behind a clean seam). **NONE of the agents makes the
-> access decision** (absolute rule 2). Commit working slices to the branch; run the suite each slice.
-
-**Increment 1 — the working scaffold**
-- [x] `bouncer.MemoryItem` += `tags` (content/relevance tags only — never access; access stays `category in allowed`)
-- [x] `users.json` += `shared` category, granted to `driver` (exec gets it via `*`)
-- [ ] `cli.load_items` reads `tags` (backward-compatible)
-- [ ] `cocoshamem.seed.json` — committed seed (~7 memories `{id, category, tags, text}`, incl. `shared` / `financials` / `legal`)
-- [ ] `agents.py` — stub Classifier / Judge / Memoriser / Responder (clean seam for a real open-weight model)
-- [ ] `pipeline.py` — orchestrator + CLI: verify → classify → relevance pre-filter (`msg_tags ∩ item.tags`) → **bouncer access filter (audited)** → MemoryLane → Responder; write-path Judge → Memoriser → append runtime store
-- [ ] `.gitignore` += `cocoshamem.json` (runtime store; the seed is committed — no runtime artifacts in the repo)
-- [ ] `test_pipeline.py`; run full suite + a `python pipeline.py <user> "<msg>"` demo; commit + push branch
-
-**Design decisions (autonomous best-guesses):** relevance = tag intersection; access unchanged (the bouncer);
-the Memoriser assigns the access category at WRITE time (`shared` default; `financials` / `legal` if sensitive);
-runtime memory-writes → gitignored `cocoshamem.json` seeded from `cocoshamem.seed.json`; role→department map for user tags.
-
-**Then (Increment 2+):** improve agents, tag hygiene/reuse (no near-dup proliferation), Judge write-candidacy +
-Memoriser quality gate, async write path, more tests, milestone-gate QA each slice. Blocking hardening: R1–R3 (below).
-
----
-
 ## Already done (for context)
 - [x] **D1** Deterministic bouncer — strict exact-match, fail-closed access control.
 - [x] **D2** Append-only audit log at the access layer (who/what/when/outcome/why, UTC).

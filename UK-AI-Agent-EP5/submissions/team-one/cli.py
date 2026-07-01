@@ -73,7 +73,12 @@ def load_items(path: Path = STORE_PATH) -> list[bouncer.MemoryItem]:
         # if missing or the wrong type). We never fix it up here: read time must
         # never invent or repair a tag. A missing/bad tag simply reaches the bouncer,
         # which denies it (fail-closed) -- untagged content is never retrievable.
-        items.append(bouncer.MemoryItem(entry["id"], entry.get("category"), entry.get("text", "")))
+        # 'tags' are CONTENT tags for relevance matching only (never access). A malformed tags
+        # value degrades to no tags -> the item just won't match a query (safe, not a leak).
+        raw_tags = entry.get("tags", ())
+        tags = tuple(t for t in raw_tags if isinstance(t, str)) if isinstance(raw_tags, (list, tuple)) else ()
+        items.append(bouncer.MemoryItem(entry["id"], entry.get("category"),
+                                        entry.get("text", ""), tags))
     return items
 
 
