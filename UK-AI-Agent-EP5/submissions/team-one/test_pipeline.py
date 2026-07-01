@@ -190,3 +190,10 @@ def test_write_time_classification_scopes_a_bob_written_secret(tmp_path):
                                   store_path=store, log_path=log, do_write=False)
     assert mem_id not in {m.id for m in bob_later.retrieved}   # writer can't read his own secret back
     assert mem_id in {m.id for m in alice_later.retrieved}      # a cleared reader can
+
+
+# --- the scripted demo runs clean ------------------------------------------
+def test_demo_runs_without_error(capsys):
+    assert pipeline.run_demo() == 0
+    out = capsys.readouterr().out.lower()
+    assert "revenue" in out and "memorised" in out
