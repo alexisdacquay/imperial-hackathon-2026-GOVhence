@@ -220,6 +220,37 @@ def test_logging_failure_fails_closed(tmp_path):
         retrieve("bob", {"schedules"}, items, log_path=bad)
 
 
+# --- R2: the audit write must be TOTAL -- adversarial values must not crash it ----
+# The audit log is a legal record: a bad field must never raise a raw exception that
+# escapes AuditError and leaves an access unlogged / bricks the log. Fail closed OR
+# store safely -- never crash.
+
+def test_oversized_field_does_not_crash_the_log(tmp_path):
+    # A field far bigger than csv's 131072-byte limit used to raise csv.Error and
+    # brick the log. It must now be capped/stored safely, and the log stays verifiable.
+    log = tmp_path / "audit.csv"
+    huge = "A" * 200_000
+    audit.log_decision("bob", "item1", "schedules", "ALLOW", huge, path=log)  # must not raise
+    rows = audit.read_log(path=log)
+    assert len(rows) == 1
+    assert len(rows[0]["reason"]) <= audit._MAX_FIELD_CHARS   # bounded
+    ok, _ = audit.verify(log)
+    assert ok is True                                         # chain still intact
+
+
+def test_unpaired_surrogate_does_not_crash_the_log(tmp_path):
+    # An unpaired UTF-16 surrogate cannot encode to UTF-8; it used to crash both the
+    # hash and the write. It must now be neutralised so the row writes and verifies,
+    # and the hash chain stays consistent across a second appended row.
+    log = tmp_path / "audit.csv"
+    audit.log_decision("bob\ud800", "item1", "schedules", "ALLOW", "note\ud800here", path=log)
+    audit.log_decision("bob", "item2", "schedules", "DENY", "second row", path=log)
+    rows = audit.read_log(path=log)
+    assert len(rows) == 2
+    ok, _ = audit.verify(log)
+    assert ok is True                                        # hashes consistent, no crash
+
+
 # --- Tamper-evidence: the audit log must DETECT any alteration -----------
 
 def _write_some(log):

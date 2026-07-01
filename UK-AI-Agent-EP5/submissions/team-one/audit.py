@@ -193,16 +193,36 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _defang(value) -> str:
-    """Neutralise spreadsheet formula injection in audit values.
+# A single field is capped well under Python's csv limit (131072 bytes) so one
+# adversarial value can never raise csv.Error and brick the append-only log. The
+# cap is on characters; even all-4-byte chars stay under the byte limit.
+_MAX_FIELD_CHARS = 8192
+_TRUNCATED = "...[truncated]"
 
-    The audit log is a regulatory record that auditors WILL open in Excel/Sheets.
-    A cell starting with = + - @ (or tab/CR) is executed as a formula there, so an
-    attacker-controlled field like '=cmd|calc!A1' could run code on the auditor's
-    machine. We prefix such values with a single quote so the spreadsheet treats
-    them as literal text. The stored value is still faithfully readable.
+
+def _defang(value) -> str:
+    """Make an audit value SAFE to hash and write, then neutralise formula injection.
+
+    Three things, in order, so the same string is what we hash AND store (keeping
+    the hash chain self-consistent):
+
+    1. Encode-safe: an unpaired UTF-16 surrogate (e.g. '\\ud800') cannot encode to
+       UTF-8 and would crash both _compute_row_hash and the CSV write. We replace
+       such code points so encoding can never raise -- a logging crash would fail
+       OPEN of the audit, the worst outcome for a legal record.
+    2. Bounded: cap length so an oversized field can't trip csv's field-size limit.
+    3. Formula-defanged: the audit log is a regulatory record auditors WILL open in
+       Excel/Sheets. A cell starting with = + - @ (or tab/CR) is executed as a
+       formula there, so an attacker-controlled '=cmd|calc!A1' could run code on the
+       auditor's machine. We prefix such values with a single quote so the
+       spreadsheet treats them as literal text. The stored value stays readable.
     """
-    text = str(value)
+    # 1. Neutralise unpaired surrogates so the value always encodes to UTF-8.
+    text = str(value).encode("utf-8", "replace").decode("utf-8")
+    # 2. Cap length (leave room for the marker) so csv.Error can't brick the log.
+    if len(text) > _MAX_FIELD_CHARS:
+        text = text[: _MAX_FIELD_CHARS - len(_TRUNCATED)] + _TRUNCATED
+    # 3. Neutralise spreadsheet formula injection (run last, on the final text).
     if text and text[0] in ("=", "+", "-", "@", "\t", "\r"):
         return "'" + text
     return text
@@ -297,7 +317,11 @@ def log_decision(user: str, item_id: str, category: str, decision: str, reason: 
         # Append the tamper-evident checkpoint (running tally) + refresh the anchor.
         # Inside the SAME try: a checkpoint/anchor write failure also FAILS CLOSED.
         _append_checkpoint(path, seq, row["row_hash"])
-    except OSError as e:
+    # OSError covers file failures (disk full, permissions). csv.Error / UnicodeError
+    # / ValueError are defence-in-depth: _defang already makes every value encode-safe
+    # and bounded, but if any risky value ever slips past we still FAIL CLOSED with an
+    # AuditError rather than crash the caller and leave an access unlogged.
+    except (OSError, csv.Error, UnicodeError, ValueError) as e:
         raise AuditError(f"could not write audit record for user={user!r} item={item_id!r}: {e}") from e
 
 
