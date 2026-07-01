@@ -19,17 +19,21 @@ from pathlib import Path
 
 def _load_dotenv():
     """Load KEY=VALUE lines from a local, gitignored `.env` (next to this file) into the
-    environment. Never overrides variables already set in the real environment. Keeps
-    secrets (the API key) out of the code and out of git."""
+    environment. Keeps secrets out of code/git. Precedence: the REAL environment always
+    wins over `.env`; within `.env`, the LAST occurrence of a key wins (so appending a
+    new block cleanly overrides an earlier one instead of being silently ignored)."""
     env_file = Path(__file__).with_name(".env")
     if not env_file.exists():
         return
+    values = {}
     for raw in env_file.read_text(encoding="utf-8").splitlines():
         line = raw.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+        values[key.strip()] = value.strip().strip('"').strip("'")   # last occurrence wins
+    for key, value in values.items():
+        os.environ.setdefault(key, value)                            # real env still wins
 
 
 _load_dotenv()
