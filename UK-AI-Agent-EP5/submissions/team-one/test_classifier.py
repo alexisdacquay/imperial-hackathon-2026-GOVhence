@@ -7,7 +7,6 @@ it isn't running) so you can see real classification.
 Run:  ../.venv/bin/python -m pytest test_classifier.py -v   (from team-one/)
 """
 import json
-import urllib.request
 
 import pytest
 
@@ -87,16 +86,13 @@ def test_llm_error_falls_back_gracefully():
     assert c.user_tags == ["driver", "logistics"]
 
 
-# --- live smoke test: actually call the local open-weight model ------------------
-def _model_up():
-    try:
-        urllib.request.urlopen("http://localhost:11434/api/tags", timeout=2)
-        return True
-    except Exception:
-        return False
+# --- live smoke test: actually call the configured open-weight model (mor.org) ---
+def _model_configured():
+    key = llm._config()[2]
+    return bool(key) and key != "your-key-here"
 
 
-@pytest.mark.skipif(not _model_up(), reason="local open-weight model (ollama) not running")
+@pytest.mark.skipif(not _model_configured(), reason="no LLM_API_KEY configured (.env)")
 def test_live_classification_smoke():
     c = classifier.classify("where is the best sandwich in London?", BOB,
                             known_tags=["food", "london", "location"])

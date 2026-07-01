@@ -1,12 +1,12 @@
 """Minimal LLM client (stdlib only) for an OpenAI-compatible chat endpoint.
 
-Open-weight ONLY (never a closed model in the product loop). Defaults to a LOCAL
-open-weight model via ollama; point it at BasedAPIs (or any OpenAI-compatible
-open-weight endpoint) by setting the env vars — no code change:
+Open-weight ONLY (never a closed model in the product loop). Talks to mor.org
+(OpenAI-compatible) by default; the API key comes from a local gitignored .env.
+One key covers every model on mor.org. Override via env / .env — no code change:
 
-  LLM_BASE_URL   (default http://localhost:11434/v1)
-  LLM_MODEL      (default qwen3.6:latest)
-  LLM_API_KEY    (default "ollama" — a local server ignores it)
+  LLM_BASE_URL   (default https://api.mor.org/api/v1)
+  LLM_MODEL      (default glm-5.2 — any OPEN-WEIGHT model on mor.org)
+  LLM_API_KEY    (required — put it in .env)
 
 No third-party dependency: uses urllib from the standard library.
 """
@@ -45,9 +45,9 @@ class LLMError(Exception):
 
 def _config():
     return (
-        os.environ.get("LLM_BASE_URL", "http://localhost:11434/v1").rstrip("/"),
-        os.environ.get("LLM_MODEL", "qwen3.6:latest"),
-        os.environ.get("LLM_API_KEY", "ollama"),
+        os.environ.get("LLM_BASE_URL", "https://api.mor.org/api/v1").rstrip("/"),
+        os.environ.get("LLM_MODEL", "glm-5.2"),
+        os.environ.get("LLM_API_KEY", ""),   # required; comes from .env
     )
 
 
