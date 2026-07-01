@@ -13,6 +13,8 @@ real regulatory audit_log.csv. The real compliance record is never touched here.
 """
 
 import json
+import threading
+import time
 
 import pytest
 
@@ -857,3 +859,49 @@ def test_anchor_replace_reraises_after_giving_up(tmp_path, monkeypatch):
     monkeypatch.setattr(audit.os, "replace", always_locked)
     with pytest.raises(PermissionError):   # persistent failure still propagates (fail-closed)
         audit._replace_with_retry(src, tmp_path / "a", attempts=3, _sleep=lambda _s: None)
+
+
+# --- R1: concurrent writes must not fork the chain -----------------------
+# Two threads writing at once must never read the same seq+hash and append it
+# twice (duplicate seq -> forked SHA-256 chain -> verify() falsely cries tamper).
+# log_decision serialises its critical section with an in-process lock so the
+# next writer always reads the previous writer's committed seq.
+
+def test_concurrent_writes_keep_chain_intact(tmp_path, monkeypatch):
+    # Force the read->append window to OVERLAP so the test has teeth: we widen the
+    # gap between "read the last seq" and "append the row" with a tiny sleep (which
+    # releases the GIL). WITHOUT the lock, every thread reads the same seq inside
+    # that gap -> duplicate seqs / broken chain. WITH the lock, entry is serialised
+    # so each thread reads a fresh seq -> a clean 0..N-1 chain.
+    log = tmp_path / "race_audit.csv"
+    # NOTE: couples to the private audit._last_link on purpose -- that IS the read half
+    # of the race. If it is ever renamed/inlined, update this hook (the test would then
+    # just stop widening the window, silently weakening -- so keep them in sync).
+    real_last_link = audit._last_link
+
+    def slow_last_link(path):
+        result = real_last_link(path)
+        time.sleep(0.01)          # yields the GIL, letting peers reach their own read
+        return result
+
+    monkeypatch.setattr(audit, "_last_link", slow_last_link)
+
+    N = 16
+    barrier = threading.Barrier(N)      # release all threads into the section together
+
+    def writer(k):
+        barrier.wait()
+        audit.log_decision("u", f"item{k}", "shared", "ALLOW", "r", path=log)
+
+    threads = [threading.Thread(target=writer, args=(k,)) for k in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    seqs = [int(row["seq"]) for row in audit.read_log(path=log)]
+    assert len(seqs) == N                    # every write landed
+    assert len(set(seqs)) == N               # no DUPLICATE seq -- the exact R1 symptom
+    assert sorted(seqs) == list(range(N))    # a clean, gap-free 0..N-1 chain
+    ok, msg = audit.verify(log)
+    assert ok, msg                           # hash chain not forked

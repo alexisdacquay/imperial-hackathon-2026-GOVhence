@@ -28,13 +28,12 @@ gates it upstream too. Suite green.
 **Blocking security hardening (do before ship — see `TODO.md`):**
 - ✅ **R2 done** — audit write is now TOTAL (fail-closed on oversized field / unpaired surrogate).
   Fixed at `audit._defang` (encode-safe + length-capped) + widened `log_decision` except. Commit `3144c4f`.
-- ⬜ **R1 — serialize concurrent audit writes.** Two writers read the same last seq+hash (no lock) →
-  duplicate seq, forked hash chain, `verify()` breaks. Fix: one critical section around
-  `_last_link` → append → `_append_checkpoint` in `audit.log_decision`, using a **cross-platform** lock
-  (lockfile via `os.open(..., O_CREAT|O_EXCL)` + bounded retry, reusing the atomic-replace pattern in
-  `audit._replace_with_retry`; add a `threading.Lock` for in-process threads). **SKILL forbids raw
-  `fcntl`/`msvcrt`.** Fail closed if the lock can't be taken. New concurrency test (spawn N threads →
-  seqs 0..N-1 unique, `verify()` ok).
+- ✅ **R1 — serialize concurrent audit writes. DONE (in `v0.1/audit.py`).** A module-level
+  `threading.Lock` (`_WRITE_LOCK`) wraps the whole read→append→checkpoint section of
+  `audit.log_decision`, so two writers can't read the same seq+hash and fork the chain. In-process only
+  (deliberate — a lockfile can't crash-release and `fcntl`/`msvcrt` are forbidden; cross-process deferred).
+  16-thread regression test passes (seqs 0..N-1 unique, `verify()` intact). Ported from Benjamin's
+  `6782ca1`; re-integrates when audit returns to the skeleton with the real Bouncer.
 - ⬜ **R3 — derived memory inherits its source's access constraints.** Today the Memoriser sets category
   only from the current message; the write path records no `derived_from` → a summary of a `financials`
   item can be stored `shared` (leak). Fix at WRITE time: (1) define restrictiveness as an **explicit

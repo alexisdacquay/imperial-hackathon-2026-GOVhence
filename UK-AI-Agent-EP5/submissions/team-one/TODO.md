@@ -26,12 +26,12 @@
 > Surfaced by the multi-agent red-team and the adversarial stress harness (39k+ cases).
 > Listed FIRST: these are correctness / availability gaps in the audit + access core.
 > (The end-truncation gap found alongside these is already CLOSED by the checkpoint/anchor.)
-- [ ] **R1. Concurrent audit writes are not serialized (seq-race).** Two callers writing to the
-  same log at once both read the same last seq+hash (no lock) → duplicate seq → the hash chain
-  forks and `verify()` breaks permanently, and both accesses are served before any verify runs.
-  The O(1) checkpoint did NOT fix this. Fix: serialize writers — a single-writer queue, SQLite
-  WAL, or the sharded-chains-+-Merkle-root design (which also scales and pairs with #1 anchoring).
-  **Not a file lock.** (Spec: *"stay synchronized with source permissions under concurrent updates."*)
+- [x] **R1. Concurrent audit writes are not serialized (seq-race). DONE (in `v0.1/audit.py`, commit
+  `6782ca1` ported).** A module-level `threading.Lock` (`_WRITE_LOCK`) serialises the whole
+  read→append→checkpoint section of `audit.log_decision`, so two writers can't fork the hash chain.
+  In-process only (deliberate: a lockfile can't crash-release, `fcntl`/`msvcrt` forbidden; cross-process
+  scale — queue / SQLite-WAL / sharded-chains+Merkle — deferred). 16-thread regression test passes.
+  Re-integrates when audit returns to the skeleton with the real Bouncer.
 - [x] **R2. Audit write is not TOTAL on two adversarial values (crashes instead of failing closed).**
   ✅ **DONE (commit `3144c4f`, branch `feat/govhence-pipeline`).** (a) A field larger than Python's CSV
   limit (~131 072 bytes) raised `csv.Error`; (b) an unpaired UTF-16 surrogate (e.g. `\ud800`) raised

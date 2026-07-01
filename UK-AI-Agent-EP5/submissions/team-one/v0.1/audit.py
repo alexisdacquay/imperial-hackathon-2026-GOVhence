@@ -45,6 +45,7 @@ verify() recomputes the whole chain and reports the first broken row.
 import csv
 import hashlib
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -274,6 +275,16 @@ def _last_link(path: Path) -> tuple[int, str]:
     return int(last["seq"]) + 1, last["row_hash"]
 
 
+# One in-process lock serialises the whole write so concurrent threads cannot read
+# the same seq+hash and append it twice (a duplicate seq forks the chain and makes
+# verify() cry tamper on an honest log -- R1). Held across the read->append->checkpoint
+# section below, it makes each writer see the previous writer's committed row. A crash
+# never leaves it stuck (Python releases it on stack unwind), so there is no stale-lock
+# failure mode. It does NOT cover two SEPARATE OS processes writing one log at once --
+# out of scope here (see TODO.md); every writer in this system runs in one process.
+_WRITE_LOCK = threading.Lock()
+
+
 def log_decision(user: str, item_id: str, category: str, decision: str, reason: str,
                  path: Path = LOG_PATH) -> None:
     """Append exactly one decision row to the audit log.
@@ -286,37 +297,41 @@ def log_decision(user: str, item_id: str, category: str, decision: str, reason: 
     granted without a durable audit record.
     """
     try:
-        new_file = not path.exists()
-        # Find where we are in the chain: the next sequence number and the
-        # previous row's hash to link to.
-        seq, prev_hash = _last_link(path)
+        # Serialise the whole read->append->checkpoint section: the seq read and the
+        # header decision must both be inside the lock so two writers can never fork
+        # the chain or both write a header (R1).
+        with _WRITE_LOCK:
+            new_file = not path.exists()
+            # Find where we are in the chain: the next sequence number and the
+            # previous row's hash to link to.
+            seq, prev_hash = _last_link(path)
 
-        # Build the row, then compute its hash from its content + the prev hash.
-        row = {
-            "seq": seq,
-            "timestamp": _utc_now(),
-            "user": _defang(user),
-            "item_id": _defang(item_id),
-            "category": _defang(category),
-            "decision": _defang(decision),
-            "reason": _defang(reason),
-        }
-        row["row_hash"] = _compute_row_hash(row, prev_hash)
+            # Build the row, then compute its hash from its content + the prev hash.
+            row = {
+                "seq": seq,
+                "timestamp": _utc_now(),
+                "user": _defang(user),
+                "item_id": _defang(item_id),
+                "category": _defang(category),
+                "decision": _defang(decision),
+                "reason": _defang(reason),
+            }
+            row["row_hash"] = _compute_row_hash(row, prev_hash)
 
-        # newline="" is the documented way to use csv on all platforms (avoids blank rows on Windows).
-        with path.open("a", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=FIELDS)
-            if new_file:
-                writer.writeheader()
-            writer.writerow(row)
-            # Durable write: push this record to disk now so a crash cannot lose
-            # the most recent decision (flush from Python, then fsync from the OS).
-            f.flush()
-            os.fsync(f.fileno())
+            # newline="" is the documented way to use csv on all platforms (avoids blank rows on Windows).
+            with path.open("a", newline="", encoding="utf-8") as f:
+                writer = csv.DictWriter(f, fieldnames=FIELDS)
+                if new_file:
+                    writer.writeheader()
+                writer.writerow(row)
+                # Durable write: push this record to disk now so a crash cannot lose
+                # the most recent decision (flush from Python, then fsync from the OS).
+                f.flush()
+                os.fsync(f.fileno())
 
-        # Append the tamper-evident checkpoint (running tally) + refresh the anchor.
-        # Inside the SAME try: a checkpoint/anchor write failure also FAILS CLOSED.
-        _append_checkpoint(path, seq, row["row_hash"])
+            # Append the tamper-evident checkpoint (running tally) + refresh the anchor.
+            # Inside the SAME try: a checkpoint/anchor write failure also FAILS CLOSED.
+            _append_checkpoint(path, seq, row["row_hash"])
     # OSError covers file failures (disk full, permissions). csv.Error / UnicodeError
     # / ValueError are defence-in-depth: _defang already makes every value encode-safe
     # and bounded, but if any risky value ever slips past we still FAIL CLOSED with an
