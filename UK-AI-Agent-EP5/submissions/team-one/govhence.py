@@ -55,8 +55,9 @@ def handle(user, message):
         return
     print(f"GOVhence             | profile (from store, never LLM) = {profile}")
 
-    # GOVhence -> Classifier -> GOVhence
-    cls = classifier.classify(message, profile)
+    # GOVhence -> Classifier -> GOVhence  (LLM-backed; known tags passed in for reuse)
+    known = sorted({t for m in MEMORY for t in m.get("tags", [])})
+    cls = classifier.classify(message, profile, known_tags=known)
     print(f"GOVhence -> Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
 
     # GOVhence -> Judge -> GOVhence  (Judge decides on the CONTENT, not on access)
