@@ -50,13 +50,17 @@ def known_tags(memories: list) -> set[str]:
     return {t for m in memories for t in m.tags}
 
 
-def extract(user: str, message_tags, memories: list, allowed: set, revoked, log_path: Path) -> list:
-    """The DeterminExtractor == the BOUNCER. Relevance PRE-filter (tag intersection, NO LLM), then
-    the audited access filter -- a forbidden item is never returned even when it is relevant, and
-    every access decision we make is logged (pre-filter, not post-filter)."""
+def extract(user: str, message_tags, memories: list, allowed: set, revoked, log_path: Path,
+            top_k: int = 5) -> list:
+    """The DeterminExtractor == the BOUNCER. Relevance PRE-filter (tag intersection, NO LLM), RANKED
+    by tag-overlap (most relevant first), then the audited access filter -- a forbidden item is never
+    returned even when relevant, and every access decision we make is logged (pre-filter, not post).
+    The permitted result is capped to the top_k most relevant, for a focused MemoryLane."""
     want = set(message_tags)
-    candidates = [m for m in memories if want & set(m.tags)]
-    return bouncer.retrieve(user, allowed, candidates, log_path=log_path, revoked_ids=revoked)
+    ranked = sorted((m for m in memories if want & set(m.tags)),
+                    key=lambda m: (-len(want & set(m.tags)), m.id))   # most overlap first, stable by id
+    permitted = bouncer.retrieve(user, allowed, ranked, log_path=log_path, revoked_ids=revoked)
+    return permitted[:top_k]
 
 
 def memory_lane(memories: list) -> str:
@@ -94,7 +98,7 @@ class Result:
 
 
 def handle(user: str, message: str, *, store_path: Path = STORE_PATH, seed_path: Path = SEED_PATH,
-           log_path: Path = audit.LOG_PATH, do_write: bool = True) -> Result:
+           log_path: Path = audit.LOG_PATH, do_write: bool = True, top_k: int = 5) -> Result:
     """Run one message end-to-end. Fail-closed: an unknown user / broken config raises
     memory.ConfigError (the caller refuses access)."""
     # (3) verify user + resolve RBAC/ACL -- load config ONCE and reuse it.
@@ -110,7 +114,7 @@ def handle(user: str, message: str, *, store_path: Path = STORE_PATH, seed_path:
     cls = agents.classify(message, role=role, known_tags=vocab)
 
     # (10 + 13) READ PATH: retrieve permitted, relevant memories -> MemoryLane -> Responder
-    retrieved = extract(user, cls.content_tags, memories, allowed, revoked, log_path)
+    retrieved = extract(user, cls.content_tags, memories, allowed, revoked, log_path, top_k=top_k)
     lane = memory_lane(retrieved)
     answer = agents.respond(message, retrieved)
 

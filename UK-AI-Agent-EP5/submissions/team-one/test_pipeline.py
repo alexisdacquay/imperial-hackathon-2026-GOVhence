@@ -120,3 +120,20 @@ def test_an_informative_statement_is_memorised(tmp_path):
     assert r.memorised is not None and r.memorised_id
     after = len(json.loads(store.read_text(encoding="utf-8"))["items"])
     assert after == before + 1
+
+
+# --- pipeline: relevance ranking + top-k cap --------------------------------
+def test_retrieval_is_ranked_by_relevance(tmp_path):
+    store, log = _seed_store(tmp_path), tmp_path / "audit.csv"
+    r = pipeline.handle("bob", "lunch food in the London office",
+                        store_path=store, log_path=log, do_write=False)
+    ids = [m.id for m in r.retrieved]
+    # mem-lunch overlaps food+location+london (3) -> ranks above london-only matches (2)
+    assert ids and ids[0] == "mem-lunch"
+
+
+def test_retrieval_caps_to_top_k(tmp_path):
+    store, log = _seed_store(tmp_path), tmp_path / "audit.csv"
+    r = pipeline.handle("bob", "London office", store_path=store, log_path=log,
+                        do_write=False, top_k=2)
+    assert len(r.retrieved) == 2
