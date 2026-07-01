@@ -1,0 +1,10 @@
+{
+  "_comment": "CocoShaMem seed — the starting shared memories the walking skeleton loads. Each memory has an access 'category' (who may see it, enforced by the Bouncer against users.json) and content 'tags' (relevance/what it's about). JSON has no comments, so this '_comment' key is ignored.",
+
+  "memories": [
+    { "category": "shared",     "tags": ["sandwich", "london"], "text": "The deli on Carter Lane does great sandwiches." },
+    { "category": "shared",     "tags": ["parking", "london"],  "text": "Visitor parking is on Friar Street." },
+    { "category": "financials", "tags": ["revenue", "london"],  "text": "Q3 revenue for the London office was 4.2M." },
+    { "category": "legal",      "tags": ["contract", "penalty"],"text": "The Acme supplier contract has a late-delivery penalty clause." }
+  ]
+}

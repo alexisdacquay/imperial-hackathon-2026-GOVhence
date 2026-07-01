@@ -6,8 +6,13 @@ real open-weight model swaps in behind the same signature later.
 """
 
 
-def memorise(candidate, tags, memory):
-    """candidate + tags + the memory store -> ack string (appends to the store)."""
-    item = {"tags": list(dict.fromkeys(tags)), "text": str(candidate)}
+def memorise(candidate, tags, memory, category="shared"):
+    """candidate + tags + the memory store -> ack string (appends to the store).
+
+    Assigns an access `category` at write time (skeleton default: "shared", the
+    least-sensitive). A real Memoriser would classify sensitivity here; the Bouncer
+    then enforces that category on every future read.
+    """
+    item = {"category": category, "tags": list(dict.fromkeys(tags)), "text": str(candidate)}
     memory.append(item)
-    return f"stored {item['text']!r} with tags {item['tags']}"
+    return f"stored {item['text']!r} [{category}] with tags {item['tags']}"
