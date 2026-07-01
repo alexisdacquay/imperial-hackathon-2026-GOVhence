@@ -6,9 +6,10 @@
 > LLM roles are rule-based **stubs** behind a clean seam (no open-weight model wired here yet); **none
 > makes the access decision** (absolute rule 2).
 
-## Status of increment 1 — ✅ GREEN: `python -m pytest -q` → **94 pass** · CLI demo verified
-> Demo: bob's "sandwich in London?" retrieves permitted London memories (financials stay DENIED
-> though tagged `london`); a statement is memorised. `python pipeline.py bob "<msg>"`.
+## Status — ✅ GREEN: **102 pass** · `python pipeline.py --demo` runs the full story · **5 increments done**
+> (1) working scaffold · (2) relevance ranking + top-k cap · (3) salient content-word tags + proven
+> memory loop · (4) security pass (injection blocked · total on adversarial input · write-time RBAC
+> scoping) · (5) scripted `--demo`. Run one turn: `python pipeline.py bob "<msg>"`.
 - [x] `bouncer.MemoryItem` += `tags` (relevance only, never access)   *(committed ae9e857)*
 - [x] `users.json` += `shared` category (driver; exec via `*`)         *(committed ae9e857)*
 - [x] `cli.load_items` reads `tags`
@@ -22,13 +23,13 @@
 `agents.memorise()` now returns `None` for a query (`cls.kind == "query"`) — defensive; the Judge
 gates it upstream too. Suite green (94).
 
-## Then (increment 2+)
-- Eyeball the CLI: `python pipeline.py bob "where can I get a sandwich in London?"` and
-  `python pipeline.py bob "The London office moved to Friar Street."`
-- True **async** write path (thread the write side; today it runs after the answer is composed).
-- Tag-hygiene beyond case/space (near-dup reuse, e.g. `weekend`/`week-end` via `agents.SYNONYMS`).
-- Wire a real **open-weight** model behind the `agents.*` seam (BasedAPIs); stubs stay as the offline fallback.
-- Run the SKILL **milestone gate** each slice (reality-check · adversarial stress · security review).
+## Remaining (next increments)
+- **Wire a real open-weight model** behind the `agents.*` seam (BasedAPIs) — stubs stay as the offline fallback (M8).
+- **Real semantic store** + embeddings for CocoShaMem (M7); the bouncer still filters results.
+- **True async** write path (thread the write side; today the read path already completes before the write).
+- Pipeline revocation demo (reuse `memory.revoked_ids`); richer tag-synonym reuse.
+- Fold the pipeline into the docs (README / PRD status) before merging to `main`.
+- Blocking hardening for production: **R1–R3** (see `TODO.md`).
 
 ## Key design decisions (autonomous best-guesses — revisit if wrong)
 - relevance = message-tags ∩ item.tags; **ACCESS is unchanged** (`bouncer.check_item`), audited.
