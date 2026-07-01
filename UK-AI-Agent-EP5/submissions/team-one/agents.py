@@ -50,6 +50,12 @@ LOCATION_WORDS = {"london", "tokyo", "leeds", "here", "office"}
 ROLE_DEPARTMENT = {"driver": "logistics", "exec": "leadership"}
 _QUESTION_STARTS = ("where", "what", "who", "when", "why", "how", "which", "can", "could",
                     "is", "are", "do", "does", "should")
+# Common words that shouldn't become content tags (keeps the salient-word pass from adding noise).
+STOPWORDS = {
+    "the", "a", "an", "and", "or", "for", "with", "of", "to", "in", "on", "at", "was", "were", "be",
+    "been", "you", "this", "that", "there", "here", "now", "not", "have", "has", "had", "your",
+    "our", "new", "best", "good", "great", "free", "find", "get", "serves", "serve", "about", "from",
+} | set(_QUESTION_STARTS)
 
 
 @dataclass
@@ -84,14 +90,17 @@ def classify(message: str, role: str = "", known_tags: set[str] | None = None) -
     """Classifier LLM (stub): message -> content tags + user tags + kind.
     Reuses `known_tags` (the existing vocabulary) so we don't proliferate near-duplicates."""
     known = {canonical_tag(t) for t in (known_tags or set())}
+    words = _words(message)
     tags: list[str] = []
-    for w in _words(message):
+    for w in words:
         if w in KEYWORD_TAGS:
             tags.append(canonical_tag(KEYWORD_TAGS[w], known))
         if w in LOCATION_WORDS:
             tags.append(canonical_tag(w, known))
             tags.append(canonical_tag("location", known))
-    words = _words(message)
+        # a salient content word becomes its own tag (so 'canteen', 'pho', ... are searchable)
+        if len(w) >= 4 and w not in STOPWORDS:
+            tags.append(canonical_tag(w, known))
     kind = "query" if (str(message).strip().endswith("?") or (words and words[0] in _QUESTION_STARTS)) \
         else "statement"
     user_tags = _dedupe(canonical_tag(x) for x in (role, ROLE_DEPARTMENT.get(role, "")) if x)

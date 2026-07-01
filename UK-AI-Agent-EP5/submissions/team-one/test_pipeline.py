@@ -137,3 +137,22 @@ def test_retrieval_caps_to_top_k(tmp_path):
     r = pipeline.handle("bob", "London office", store_path=store, log_path=log,
                         do_write=False, top_k=2)
     assert len(r.retrieved) == 2
+
+
+# --- the memory loop: a taught fact helps a later query --------------------
+def test_a_taught_fact_helps_a_later_query(tmp_path):
+    store, log = _seed_store(tmp_path), tmp_path / "audit.csv"
+    # bob teaches a fact -> it is quality-gated and written to shared memory
+    taught = pipeline.handle("bob", "The office now serves free lunch on Fridays.",
+                             store_path=store, log_path=log)
+    assert taught.memorised is not None
+    # a later, relevant query retrieves the memory that was just written
+    later = pipeline.handle("bob", "is there lunch at the office?",
+                            store_path=store, log_path=log, do_write=False)
+    assert any("free lunch" in m.text.lower() for m in later.retrieved)
+
+
+def test_salient_content_words_become_tags():
+    # content words >= 4 chars (not stopwords) become searchable tags; short/stop words don't.
+    tags = set(agents.classify("the canteen serves noodles on Fridays").content_tags)
+    assert {"canteen", "noodles", "fridays"} <= tags
