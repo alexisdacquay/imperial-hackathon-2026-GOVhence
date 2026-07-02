@@ -20,6 +20,7 @@ from pathlib import Path
 import classifier
 import judge
 import bouncer
+import llm
 import memoriser
 import responder
 
@@ -60,8 +61,15 @@ def handle(user, message):
     cls = classifier.classify(message, profile, known_tags=known)
     print(f"GOVhence <- Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
 
-    # GOVhence -> Judge -> GOVhence  (Judge decides on the CONTENT, not on access)
-    d = judge.judge(message, cls.content_tags)
+    # GOVhence -> Judge -> GOVhence  (Judge decides on the CONTENT, not on access).
+    # No silent fallback: if the Judge LLM is down, refuse the message loudly —
+    # this product has no offline backup, and faking a judgement would be worse.
+    try:
+        d = judge.judge(message, cls.content_tags)
+    except llm.LLMError as e:
+        print(f"GOVhence             | Judge unavailable ({e}) -> refuse, no silent fallback")
+        print("GOVhence -> User       | Sorry — I can't handle messages right now; please try again shortly.")
+        return
     print(f"GOVhence <- Judge      | read={d.read} write={d.write} candidate={d.candidate!r}")
 
     # GOVhence -> Bouncer (read path). GOVhence passes ONLY the topics + the

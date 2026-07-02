@@ -78,16 +78,18 @@ def test_prompt_judges_write_on_content_not_form():
     assert "content, not the form" in sys_low         # a fact-carrying question may write
 
 
-def test_bad_json_falls_back_to_rules():
-    d = judge.judge("The canteen serves free noodles on Fridays", ["food"], chat=_fake("not json"))
-    assert d.write is True                     # rule-based fallback: substantive statement -> write
+def test_bad_json_raises_loudly_no_silent_fallback():
+    # Owner decision (2 Jul): there is NO offline backup in this product. Junk output
+    # must raise (GOVhence then refuses the message) — never a keyword-rule fake judgement.
+    with pytest.raises(llm.LLMError):
+        judge.judge("The canteen serves free noodles on Fridays", ["food"], chat=_fake("not json"))
 
 
-def test_llm_error_falls_back_to_rules():
+def test_llm_offline_raises_loudly_no_silent_fallback():
     def boom(system, user, **kw):
         raise llm.LLMError("model offline")
-    d = judge.judge("Hi", [], chat=boom)
-    assert d.read is False and d.write is False  # greeting -> nothing
+    with pytest.raises(llm.LLMError):
+        judge.judge("Hi", [], chat=boom)
 
 
 # --- live smoke: the real JUDGE model (glm-5.2) ----------------------------------

@@ -7,7 +7,10 @@ A PURE DECISION FUNCTION. Given message + tags it returns to GOVhence:
 It DECIDES only; GOVhence does the routing, and the Bouncer (not the Judge) gates access.
 
 Runs an open-weight LLM routed to the JUDGE model (e.g. glm-5.2) via per-component env.
-Injectable (`chat=`) for tests; falls back to deterministic rules if the model is offline.
+Injectable (`chat=`) for tests. NO silent fallback (owner decision, 2 Jul): this product
+has no offline backup, so if the model is unavailable or returns junk the Judge raises
+llm.LLMError and GOVhence refuses the message LOUDLY — keyword rules pretending to be a
+judgement would be silent degradation.
 """
 from dataclasses import dataclass
 
@@ -48,11 +51,6 @@ GUARDRAILS (must follow):
   - Output STRICT JSON only, exactly: {"read": true|false, "write": true|false, "candidate": "<text>"|null}.
 """
 
-_GREETINGS = {"hi", "hello", "hey", "yo", "thanks", "thank you"}
-_QUESTION_STARTS = ("where", "what", "who", "when", "why", "how", "which",
-                    "is", "are", "can", "do", "does", "should")
-
-
 @dataclass
 class Decision:
     read: bool
@@ -60,26 +58,11 @@ class Decision:
     candidate: str | None
 
 
-def _fallback(message, tags):
-    """Deterministic offline decision when the LLM is unavailable (the old rule-based logic).
-
-    Deliberately MORE conservative than the LLM prompt: offline rules cannot spot
-    facts embedded in a question, so a question never writes here. Degraded mode
-    misses some writes; it must never store junk."""
-    text = str(message).strip()
-    low = text.lower()
-    if low in _GREETINGS:
-        return Decision(read=False, write=False, candidate=None)
-    words = low.split()
-    is_question = low.endswith("?") or (words and words[0] in _QUESTION_STARTS)
-    read = bool(is_question or tags)
-    write = (not is_question) and len(words) >= 3
-    return Decision(read=read, write=write, candidate=(text if write else None))
-
-
 def judge(message, tags, chat=llm.chat):
-    """message + tags -> Decision(read, write, candidate). Uses the JUDGE LLM; falls back
-    to deterministic rules if the model is unavailable or returns junk."""
+    """message + tags -> Decision(read, write, candidate), from the JUDGE LLM.
+
+    No fallback: model unavailable or junk output -> llm.LLMError, so the
+    orchestrator refuses the message loudly instead of faking a judgement."""
     user_prompt = (f"Content tags (from the Classifier): {list(tags)}\n\n"
                    f"User message:\n{message}")
     try:
@@ -92,5 +75,7 @@ def judge(message, tags, chat=llm.chat):
             write=write,
             candidate=(str(candidate) if (write and candidate) else None),
         )
-    except (llm.LLMError, ValueError, TypeError, AttributeError):
-        return _fallback(message, tags)   # graceful degradation
+    except llm.LLMError:
+        raise                              # already a clear "model unavailable" error
+    except (ValueError, TypeError, AttributeError) as e:
+        raise llm.LLMError(f"JUDGE returned unusable output: {e}") from e
