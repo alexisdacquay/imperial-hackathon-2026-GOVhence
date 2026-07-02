@@ -72,6 +72,23 @@ def test_llm_facing_text_never_says_memory_or_access():
         assert banned not in scaffolding, f"LLM-facing prompt leaks {banned!r}"
 
 
+def test_prompt_has_numbers_discipline():
+    # Regression (2 Jul, live manual test): asked "fleet cost $14M, insurance $2M —
+    # how much do we risk?", the model invented a "$16M replacement cost" (14+2
+    # silently blended). The prompt must demand exact figures and visible working
+    # for any arithmetic — never a silently derived number.
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"] = system
+        return "ok"
+
+    responder.respond("x", [], chat=rec)
+    sys_low = seen["system"].lower()
+    assert "exactly" in sys_low and "show" in sys_low and "working" in sys_low
+    assert "never silently blend figures" in sys_low
+
+
 def test_prompt_carries_message_and_every_memory():
     seen = {}
 
