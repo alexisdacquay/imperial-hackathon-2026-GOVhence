@@ -60,7 +60,21 @@ fail-closed) with 19 unit tests. ALSO NEW (2 Jul): the **Memoriser is a real LLM
 write-time security labelling from the known vocabulary (`bouncer.all_labels`), guarded by
 deterministic code: **fail-closed writes** (offline/junk → candidate refused, store untouched) and
 the **writer cap** (labels ⊆ the writer's own clearances; cap on labels only, topic words free).
-The automated suite passes (exit 0).**
+FINALLY (2 Jul): the **Responder is a real LLM role** (V4 done) — the final answer the user reads.
+**Memory-ENHANCED, not memory-limited** (owner decision; supersedes the same-day strict-grounding
+first cut): general questions are answered from the model's own knowledge, the permitted MemoryLane
+is the AUTHORITY on company matters (a note beats the model's beliefs; uncovered company questions
+get "I don't have that information", never an invented company fact), injected instructions in
+memory text are ignored, and it degrades gracefully to a plain summary (it is downstream of the
+gate, so it cannot leak restricted memories). Prompt hygiene — ALL four roles (owner decisions):
+no LLM ever sees the word "memory" (it would read that as its own memory) — the store is "the
+company's shared knowledge base" holding "notes"; the Responder additionally never sees access/gate
+vocabulary; access labels are always "security labels" (Memoriser LLM JSON contract:
+`security_labels`; internal code vocabulary unchanged). Banned-vocabulary regression tests cover
+every role. **All four LLM roles are now real**
+(Classifier/Judge/Memoriser/Responder); the pipeline is feature-complete. A `pytest.ini`
+(`testpaths = tests`) keeps a bare `pytest` out of `archive/v0.1` (its same-named old test modules
+broke collection). The automated suite passes (exit 0).**
 > `main` is the stable baseline (M1–M6, no pipeline). The pipeline + R2 live on
 > `feat/govhence-pipeline` — work here. Next: R1 (serialize concurrent audit writes) and R3
 > (derived-memory inherits its source's access constraints), then wire a real open-weight model

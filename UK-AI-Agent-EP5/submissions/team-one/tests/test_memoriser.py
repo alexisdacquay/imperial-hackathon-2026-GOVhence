@@ -41,7 +41,7 @@ def test_stores_with_llm_labels(users_path):
     mem = []
     ack = memoriser.memorise("Depot closes early on Fridays", ["depot", "schedule", "depot"],
                              mem, "ben", users_path=users_path,
-                             chat=_fake('{"labels": ["logistics"]}'))
+                             chat=_fake('{"security_labels": ["logistics"]}'))
     assert ack.startswith("stored")
     assert len(mem) == 1
     assert mem[0]["labels"] == ["logistics"]
@@ -54,7 +54,7 @@ def test_multiple_labels_all_kept_most_restrictive(users_path):
     mem = []
     memoriser.memorise("Acme settled for 250k", ["settlement"], mem, "max",
                        users_path=users_path,
-                       chat=_fake('{"labels": ["financials", "legal"]}'))
+                       chat=_fake('{"security_labels": ["financials", "legal"]}'))
     assert mem[0]["labels"] == ["financials", "legal"]
 
 
@@ -65,7 +65,7 @@ def test_label_above_writer_clearance_is_refused(users_path):
     mem = []
     ack = memoriser.memorise("Q3 revenue was 4.2M", ["revenue"], mem, "ben",
                              users_path=users_path,
-                             chat=_fake('{"labels": ["financials"]}'))
+                             chat=_fake('{"security_labels": ["financials"]}'))
     assert ack.startswith("NOT stored") and "above the writer's clearance" in ack
     assert mem == []                                          # store untouched
 
@@ -73,7 +73,7 @@ def test_label_above_writer_clearance_is_refused(users_path):
 def test_unknown_writer_cannot_store_anything(users_path):
     mem = []
     ack = memoriser.memorise("anything", ["x"], mem, "mallory",
-                             users_path=users_path, chat=_fake('{"labels": ["shared"]}'))
+                             users_path=users_path, chat=_fake('{"security_labels": ["shared"]}'))
     assert ack.startswith("NOT stored") and mem == []         # no clearances -> no cap passes
 
 
@@ -82,7 +82,7 @@ def test_unknown_writer_cannot_store_anything(users_path):
 def test_label_outside_vocabulary_is_refused(users_path):
     mem = []
     ack = memoriser.memorise("m", ["x"], mem, "ben", users_path=users_path,
-                             chat=_fake('{"labels": ["topsecret"]}'))
+                             chat=_fake('{"security_labels": ["topsecret"]}'))
     assert ack.startswith("NOT stored") and "vocabulary" in ack and mem == []
 
 
@@ -90,21 +90,21 @@ def test_label_case_mismatch_is_refused(users_path):
     # strict exact strings: 'Logistics' is NOT the label 'logistics'.
     mem = []
     ack = memoriser.memorise("m", ["x"], mem, "ben", users_path=users_path,
-                             chat=_fake('{"labels": ["Logistics"]}'))
+                             chat=_fake('{"security_labels": ["Logistics"]}'))
     assert ack.startswith("NOT stored") and mem == []
 
 
 def test_empty_labels_refused(users_path):
     mem = []
     ack = memoriser.memorise("m", ["x"], mem, "ben", users_path=users_path,
-                             chat=_fake('{"labels": []}'))
+                             chat=_fake('{"security_labels": []}'))
     assert ack.startswith("NOT stored") and mem == []
 
 
 def test_non_list_labels_refused(users_path):
     mem = []
     ack = memoriser.memorise("m", ["x"], mem, "ben", users_path=users_path,
-                             chat=_fake('{"labels": "shared"}'))
+                             chat=_fake('{"security_labels": "shared"}'))
     assert ack.startswith("NOT stored") and mem == []
 
 
@@ -133,13 +133,31 @@ def test_routes_to_MEMORISER_component_and_prompt_content(users_path):
     def rec(system, user, **kw):
         seen["component"] = kw.get("component")
         seen["user"] = user
-        return '{"labels": ["shared"]}'
+        return '{"security_labels": ["shared"]}'
 
     memoriser.memorise("bread news", ["bread"], [], "ben", users_path=users_path, chat=rec)
     assert seen["component"] == "MEMORISER"
     assert "financials" in seen["user"]           # FULL vocabulary offered (cap is in code)
     assert "role=driver" in seen["user"]          # role+dept context sent...
     assert "ben" not in seen["user"]              # ...but NEVER the writer's name
+
+
+def test_llm_facing_text_says_security_label_never_memory(users_path):
+    # Owner decision (2 Jul): LLM-facing text never says "memory" — a model reads that
+    # as its OWN memory/chat history (even the role name MEMORISER is memory-flavoured,
+    # so the prompt says "security labeller"). Bare "label" is ambiguous too: the prompt
+    # says "security label" and the LLM JSON contract key is "security_labels".
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"], seen["user"] = system, user
+        return '{"security_labels": ["shared"]}'
+
+    memoriser.memorise("bread news", ["bread"], [], "ben", users_path=users_path, chat=rec)
+    scaffolding = (seen["system"] + "\n" + seen["user"]).lower()
+    assert "memor" not in scaffolding               # no memory/memories/memoriser
+    assert "security label" in scaffolding          # the unambiguous term
+    assert '"security_labels"' in seen["system"]    # the JSON contract uses it too
 
 
 # --- live smoke: the real model (skipped without a key) ----------------------------

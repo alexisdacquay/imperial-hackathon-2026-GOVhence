@@ -46,6 +46,22 @@ def test_routes_to_JUDGE_component():
     assert seen["component"] == "JUDGE"       # the Judge uses its own model, not the generic one
 
 
+def test_llm_facing_text_never_says_memory():
+    # Owner decision (2 Jul): to any model the store is "the company's shared knowledge
+    # base" holding "notes" — the word "memory" never reaches an LLM (a model reads it
+    # as its OWN memory/chat history).
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"], seen["user"] = system, user
+        return '{"read": true, "write": false, "candidate": null}'
+
+    judge.judge("where is the best sandwich?", ["food"], chat=rec)
+    scaffolding = (seen["system"] + "\n" + seen["user"]).lower()
+    assert "memor" not in scaffolding
+    assert "knowledge base" in scaffolding
+
+
 def test_bad_json_falls_back_to_rules():
     d = judge.judge("The canteen serves free noodles on Fridays", ["food"], chat=_fake("not json"))
     assert d.write is True                     # rule-based fallback: substantive statement -> write

@@ -72,6 +72,22 @@ def test_caps_tag_count():
     assert len(c.content_tags) <= 6
 
 
+def test_llm_facing_text_never_says_memory():
+    # Owner decision (2 Jul): to any model the store is "the company's shared knowledge
+    # base" holding "notes" — the word "memory" never reaches an LLM (a model reads it
+    # as its OWN memory/chat history).
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"], seen["user"] = system, user
+        return '{"content_tags": ["food"]}'
+
+    classifier.classify("bread", BOB, known_tags=["food"], chat=rec)
+    scaffolding = (seen["system"] + "\n" + seen["user"]).lower()
+    assert "memor" not in scaffolding
+    assert "knowledge base" in scaffolding
+
+
 def test_bad_json_falls_back_gracefully():
     c = classifier.classify("sandwich in London", BOB, chat=_fake("not json at all"))
     assert "london" in c.content_tags                  # rule-based fallback, no crash
