@@ -31,9 +31,13 @@
 ### Vocabulary sweep follow-ups (from the D11 labels/clearances redesign)
 - [ ] **V1.** Rename `classifier.py`'s `content_tags` → `topics` (and `known_tags` → `known_topics`)
   so the LLM side uses the definitive vocabulary too; update govhence prints + classifier tests.
-- [ ] **V2.** Real write-time labelling: Memoriser currently stamps every new memory
-  `labels=["shared"]` (skeleton default). Decide labels from writer context/classification —
-  most-restrictive-wins — and test it.
+- [x] **V2.** (2 Jul) Real write-time labelling — the Memoriser is now an LLM role: it classifies
+  the candidate against the known label vocabulary (union of all roles' clearances in `users.json`,
+  via `bouncer.all_labels`) and stores every label that applies (most-restrictive-wins). Two
+  deterministic guardrails wrap it (owner decisions, 2 Jul): **fail-closed writes** (offline / junk /
+  invalid labels → candidate REFUSED with a clear ack, store untouched; reads unaffected) and the
+  **writer cap** (labels must be ⊆ the writer's own clearances, read via the Bouncer's trusted path —
+  anti-poisoning; cap is on security labels ONLY, topic words stay free). 12 unit tests + live smoke.
 - [ ] **V3.** Docs sweep: HANDOFF §file-table + audit sections and README still describe the v0.1
   `category`/allow/deny model in places; align wording with topics/labels/clearances.
 

@@ -56,7 +56,11 @@ labels/clearances** (government-classification style, ALL-match; deny/`*` remove
 DEFINITIVE vocabulary `topics` (content, ANY-match, from the LLM — never grants access) /
 `labels` (on memories) / `clearances` (held via roles in `users.json`); `src/bouncer.py` is a
 REAL gate (loads `cocoshamem.seed.json` + `users.json` itself, validates types, `ConfigError`
-fail-closed) with 19 unit tests. The automated suite passes (42 tests, exit 0).**
+fail-closed) with 19 unit tests. ALSO NEW (2 Jul): the **Memoriser is a real LLM role** (V2 done) —
+write-time security labelling from the known vocabulary (`bouncer.all_labels`), guarded by
+deterministic code: **fail-closed writes** (offline/junk → candidate refused, store untouched) and
+the **writer cap** (labels ⊆ the writer's own clearances; cap on labels only, topic words free).
+The automated suite passes (exit 0).**
 > `main` is the stable baseline (M1–M6, no pipeline). The pipeline + R2 live on
 > `feat/govhence-pipeline` — work here. Next: R1 (serialize concurrent audit writes) and R3
 > (derived-memory inherits its source's access constraints), then wire a real open-weight model

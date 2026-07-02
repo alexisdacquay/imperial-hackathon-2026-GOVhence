@@ -85,9 +85,11 @@ def handle(user, message):
     # GOVhence -> User  (answer goes out first)
     print(f"GOVhence -> User       | {answer}")
 
-    # GOVhence -> Memoriser (write path) — AFTER the answer (async in real life)
+    # GOVhence -> Memoriser (write path) — AFTER the answer (async in real life).
+    # Passes the USERNAME only: the Memoriser reads the writer's clearances itself
+    # (trusted path), labels the candidate, and fails closed if it cannot.
     if d.write:
-        ack = memoriser.memorise(d.candidate, cls.content_tags, MEMORY)
+        ack = memoriser.memorise(d.candidate, cls.content_tags, MEMORY, user)
         print(f"GOVhence -> Memoriser  | (async) {ack}")
 
 
