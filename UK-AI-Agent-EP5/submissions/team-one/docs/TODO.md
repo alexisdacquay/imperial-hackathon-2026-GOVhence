@@ -23,12 +23,31 @@
   (held via roles). `src/bouncer.py` is now a REAL gate: loads `cocoshamem.seed.json` + `users.json`
   itself, validates all element types, `ConfigError` fail-closed, empty-labels ⇒ invisible to all.
   19 bouncer unit tests (temp-dir fixtures + real-store smoke); suite at 42.
+- [x] **D12** (2 Jul) Test-collection fix: a bare `pytest` from team-one/ recursed into `archive/v0.1`,
+  whose same-basename test modules (old `test_bouncer.py`) and old `bouncer.py` shadowed the live
+  suite — collection crashed before a single test ran (would also break CI's `python -m pytest -q`).
+  Fixed with `pytest.ini` (`testpaths = tests`); stale `__pycache__`/`.pytest_cache` cleared (both
+  are generated + gitignored, never committed).
 
 ---
 
 ## New backlog (numbered)
 
 ### Vocabulary sweep follow-ups (from the D11 labels/clearances redesign)
+- [x] **V4.** (2 Jul) Responder is now a real LLM role — the FINAL answer the user reads.
+  **Memory-ENHANCED, not memory-limited** (owner decision, 2 Jul — SUPERSEDES the same-day
+  strict-grounding first cut): a normal, fully capable assistant. General questions are answered
+  from the model's own knowledge ("capital of France?" → "Paris"); the permitted MemoryLane is the
+  AUTHORITY on company matters — a note beats the model's beliefs, and a company question the notes
+  don't cover gets "I don't have that information", never an invented company fact. Ignores
+  instructions embedded in memory text; greetings get a natural reply. Graceful (not fail-closed)
+  degradation — the Responder is downstream of the gate so it cannot leak restricted memories: on
+  offline/junk it falls back to a plain deterministic summary of permitted content. Prompt hygiene
+  (owner feedback, 2 Jul): LLM-facing text NEVER says "memory" (a model reads that as its OWN
+  memory/chat history) and never mentions access/permissions/gates (can't leak machinery it never
+  heard of) — MemoryLane is framed as numbered "background notes" + the user's message, enforced by
+  a banned-vocabulary regression test. **All four LLM roles are now real** (Classifier / Judge /
+  Memoriser / Responder). 13 unit tests + 3 live smokes.
 - [ ] **V1.** Rename `classifier.py`'s `content_tags` → `topics` (and `known_tags` → `known_topics`)
   so the LLM side uses the definitive vocabulary too; update govhence prints + classifier tests.
 - [x] **V2.** (2 Jul) Real write-time labelling — the Memoriser is now an LLM role: it classifies
