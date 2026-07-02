@@ -48,6 +48,14 @@
   heard of) — MemoryLane is framed as numbered "background notes" + the user's message, enforced by
   a banned-vocabulary regression test. **All four LLM roles are now real** (Classifier / Judge /
   Memoriser / Responder). 13 unit tests + 3 live smokes.
+- [x] **V5.** (2 Jul) LLM-facing vocabulary standard (owner decisions): to any model, the store is
+  **"the company's shared knowledge base"** holding **"notes"** — the word "memory" NEVER reaches an
+  LLM (a model reads it as its OWN memory/chat history; even the role name "MEMORISER" is
+  memory-flavoured, so its prompt says "security labeller"). Bare "label" is ambiguous too ("label"
+  doesn't natively mean access) → LLM-facing text always says **"security label"** and the Memoriser's
+  LLM JSON contract is `{"security_labels": [...]}`. "topics" stays (owner-approved). Internal/code
+  vocabulary is UNCHANGED (MemoryLane, Memoriser, item `labels`, `clearances` — the D11 set).
+  Banned-vocabulary regression tests cover all four LLM roles.
 - [ ] **V1.** Rename `classifier.py`'s `content_tags` → `topics` (and `known_tags` → `known_topics`)
   so the LLM side uses the definitive vocabulary too; update govhence prints + classifier tests.
 - [x] **V2.** (2 Jul) Real write-time labelling — the Memoriser is now an LLM role: it classifies
