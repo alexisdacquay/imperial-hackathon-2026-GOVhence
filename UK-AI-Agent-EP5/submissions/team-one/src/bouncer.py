@@ -26,7 +26,10 @@ Malformed config or memory data raises ConfigError (loud, fail-closed) rather
 than leaking a bare TypeError from inside set operations.
 """
 import json
+import time
 from pathlib import Path
+
+import eventlog
 
 _DATA = Path(__file__).parent.parent / "data"
 _USERS_PATH = _DATA / "users.json"
@@ -93,20 +96,36 @@ def clearances_for(user, users_path=_USERS_PATH):
 
     Unknown or invalid user -> empty set (fail-closed). A role with a missing or
     malformed 'clearances' list is a config bug -> ConfigError (loud, fail-closed).
+    Every check is recorded to the event log with its duration (best-effort;
+    recording can never change the outcome).
     """
-    data = _load_json(users_path, "users.json")
-    users, roles = data.get("users", {}), data.get("roles", {})
-    if not isinstance(users, dict) or not isinstance(roles, dict):
-        raise ConfigError("users.json: 'users' and 'roles' must be objects")
-    if not isinstance(user, str):
-        return set()                                   # invalid identity -> no access
-    role = users.get(user)
-    if role is None:
-        return set()                                   # unknown user -> no access
-    rdef = roles.get(role)
-    if not isinstance(rdef, dict) or "clearances" not in rdef:
-        raise ConfigError(f"users.json: role {role!r} has no 'clearances' list")
-    return _str_set(rdef["clearances"], f"role {role!r} 'clearances'")
+    t0 = time.perf_counter()
+    try:
+        data = _load_json(users_path, "users.json")
+        users, roles = data.get("users", {}), data.get("roles", {})
+        if not isinstance(users, dict) or not isinstance(roles, dict):
+            raise ConfigError("users.json: 'users' and 'roles' must be objects")
+        if not isinstance(user, str):
+            clearances = set()                         # invalid identity -> no access
+        else:
+            role = users.get(user)
+            if role is None:
+                clearances = set()                     # unknown user -> no access
+            else:
+                rdef = roles.get(role)
+                if not isinstance(rdef, dict) or "clearances" not in rdef:
+                    raise ConfigError(f"users.json: role {role!r} has no 'clearances' list")
+                clearances = _str_set(rdef["clearances"], f"role {role!r} 'clearances'")
+    except ConfigError as e:
+        eventlog.emit("credentials", component="Bouncer", user=str(user)[:80],
+                      status="failure", error=str(e),
+                      ms=round((time.perf_counter() - t0) * 1000, 3))
+        raise
+    eventlog.emit("credentials", component="Bouncer", user=str(user)[:80],
+                  status="ok", known=bool(clearances) or (isinstance(user, str) and user in users),
+                  clearances=sorted(clearances),
+                  ms=round((time.perf_counter() - t0) * 1000, 3))
+    return clearances
 
 
 def all_labels(users_path=_USERS_PATH):
@@ -163,14 +182,42 @@ def retrieve(query_topics, user, memories=None, users_path=_USERS_PATH,
     If `memories` is None the store is loaded from disk (runtime store, falling
     back to the seed — see resolve_memory_path). Access is decided ONLY by labels
     vs the user's clearances (read here from users.json), never by `query_topics`.
+
+    Every read is recorded to the event log — request, per-memory ALLOW/DENY
+    decisions (for the relevant ones), permitted/withheld counts, duration in ms,
+    and failures — best-effort: recording can never change the decision.
     """
-    want = _topic_set(query_topics)
-    clearances = clearances_for(user, users_path)
-    if memories is None:
-        memories = load_memories(memory_path)
-    lane = []
-    for m in memories:
-        labels, topics = _item_sets(m)
-        if visible(labels, clearances) and (topics & want):
-            lane.append(m)
+    t0 = time.perf_counter()
+    try:
+        want = _topic_set(query_topics)
+        clearances = clearances_for(user, users_path)
+        if memories is None:
+            memories = load_memories(memory_path)
+        lane, decisions = [], []
+        for m in memories:
+            labels, topics = _item_sets(m)
+            matched = topics & want
+            if not matched:
+                continue                               # not relevant -> not evaluated
+            permitted = visible(labels, clearances)
+            if permitted:
+                lane.append(m)
+                reason = "all labels held"
+            elif not labels:
+                reason = "no labels -> visible to nobody (fail-closed)"
+            else:
+                reason = f"missing clearance(s) {sorted(labels - clearances)}"
+            decisions.append({"text": str(m.get("text", ""))[:160],
+                              "labels": sorted(labels), "matched": sorted(matched),
+                              "decision": "ALLOW" if permitted else "DENY",
+                              "reason": reason})
+    except ConfigError as e:
+        eventlog.emit("bouncer.read", user=str(user)[:80], status="failure",
+                      error=str(e), ms=round((time.perf_counter() - t0) * 1000, 3))
+        raise
+    eventlog.emit("bouncer.read", user=str(user)[:80], status="success",
+                  topics=sorted(want), clearances=sorted(clearances),
+                  relevant=len(decisions), permitted=len(lane),
+                  withheld=len(decisions) - len(lane), decisions=decisions,
+                  ms=round((time.perf_counter() - t0) * 1000, 3))
     return lane

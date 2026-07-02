@@ -68,6 +68,10 @@ audit_log.csv*
 cocoshamem.json
 cocoshamem.json.tmp
 
+# Pipeline activity feed (JSONL) — written at run time for the GUI to graph; a
+# runtime artifact like the store/audit log above, never committed.
+events.jsonl
+
 # ─────────────────────────────────────────────────────────────
 # Editor & OS noise
 # ─────────────────────────────────────────────────────────────

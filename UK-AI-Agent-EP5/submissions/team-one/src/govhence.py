@@ -15,11 +15,13 @@ Run:  python govhence.py bob "where is the best sandwich in London?"
 """
 import json
 import sys
+import time
 from pathlib import Path
 
 import classifier
 import judge
 import bouncer
+import eventlog
 import llm
 import memoriser
 import responder
@@ -44,12 +46,21 @@ MEMORY = bouncer.load_memories()
 
 
 def handle(user, message):
+    t_run = time.perf_counter()
+
+    def _ms(t0):
+        return round((time.perf_counter() - t0) * 1000, 3)
+
     print(f"User -> GOVhence      | {user}: {message!r}")
 
     profile = PROFILES.get(user)
     if profile is None:
+        eventlog.start_run(user, message=message)
+        eventlog.end_run(status="refused", reason="unknown user", ms_total=_ms(t_run))
         print(f"GOVhence             | unknown user {user!r} -> refuse")
         return
+    eventlog.start_run(user, message=message,
+                       role=profile["role"], department=profile["department"])
     print(f"GOVhence             | profile (from store, never LLM) = {profile}")
 
     # GOVhence -> Classifier -> GOVhence  (LLM-backed). Scope the reusable topic vocabulary
@@ -58,18 +69,29 @@ def handle(user, message):
     clearances = bouncer.clearances_for(user)
     known = sorted({t for m in bouncer.filter_visible(MEMORY, clearances)
                     for t in m.get("topics", [])})
+    eventlog.emit("call", src="GOVhence", dst="Classifier")
+    t0 = time.perf_counter()
     cls = classifier.classify(message, profile, known_tags=known)
+    eventlog.emit("return", src="Classifier", dst="GOVhence", ms=_ms(t0),
+                  detail={"topics": list(cls.content_tags), "user_tags": list(cls.user_tags)})
     print(f"GOVhence <- Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
 
     # GOVhence -> Judge -> GOVhence  (Judge decides on the CONTENT, not on access).
     # No silent fallback: if the Judge LLM is down, refuse the message loudly —
     # this product has no offline backup, and faking a judgement would be worse.
+    eventlog.emit("call", src="GOVhence", dst="Judge")
+    t0 = time.perf_counter()
     try:
         d = judge.judge(message, cls.content_tags)
     except llm.LLMError as e:
+        eventlog.emit("return", src="Judge", dst="GOVhence", ms=_ms(t0),
+                      status="error", error=str(e))
+        eventlog.end_run(status="error", error=f"Judge unavailable: {e}", ms_total=_ms(t_run))
         print(f"GOVhence             | Judge unavailable ({e}) -> refuse, no silent fallback")
         print("GOVhence -> User       | Sorry — I can't handle messages right now; please try again shortly.")
         return
+    eventlog.emit("return", src="Judge", dst="GOVhence", ms=_ms(t0),
+                  detail={"read": d.read, "write": d.write, "candidate": d.candidate})
     print(f"GOVhence <- Judge      | read={d.read} write={d.write} candidate={d.candidate!r}")
 
     # GOVhence -> Bouncer (read path). GOVhence passes ONLY the topics + the
@@ -77,13 +99,21 @@ def handle(user, message):
     # directly from users.json, so an LLM can never smuggle access via topics.
     lane = []
     if d.read:
+        eventlog.emit("call", src="GOVhence", dst="Bouncer")
+        t0 = time.perf_counter()
         lane = bouncer.retrieve(cls.content_tags, user, MEMORY)
+        eventlog.emit("return", src="Bouncer", dst="GOVhence", ms=_ms(t0),
+                      detail={"permitted": len(lane)})
         print(f"GOVhence <- Bouncer    | MemoryLane = {[m['text'] for m in lane]}")
     else:
         print("GOVhence             | read not needed -> straight to Responder")
 
     # GOVhence -> Responder -> GOVhence
+    eventlog.emit("call", src="GOVhence", dst="Responder")
+    t0 = time.perf_counter()
     answer = responder.respond(message, lane)
+    eventlog.emit("return", src="Responder", dst="GOVhence", ms=_ms(t0),
+                  detail={"answer": answer})
     print(f"GOVhence <- Responder  | {answer!r}")
 
     # GOVhence -> User  (answer goes out first)
@@ -93,8 +123,14 @@ def handle(user, message):
     # Passes the USERNAME only: the Memoriser reads the writer's clearances itself
     # (trusted path), labels the candidate, and fails closed if it cannot.
     if d.write:
+        eventlog.emit("call", src="GOVhence", dst="Memoriser")
+        t0 = time.perf_counter()
         ack = memoriser.memorise(d.candidate, cls.content_tags, MEMORY, user)
+        eventlog.emit("return", src="Memoriser", dst="GOVhence", ms=_ms(t0),
+                      status="stored" if ack.startswith("stored") else "refused",
+                      detail={"ack": ack})
         print(f"GOVhence <- Memoriser  | (async) {ack}")
+    eventlog.end_run(status="ok", ms_total=_ms(t_run), answer=answer)
 
 
 def main(argv):
