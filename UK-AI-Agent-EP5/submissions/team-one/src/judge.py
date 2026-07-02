@@ -9,7 +9,6 @@ It DECIDES only; GOVhence does the routing, and the Bouncer (not the Judge) gate
 Runs an open-weight LLM routed to the JUDGE model (e.g. glm-5.2) via per-component env.
 Injectable (`chat=`) for tests; falls back to deterministic rules if the model is offline.
 """
-import json
 from dataclasses import dataclass
 
 import llm
@@ -73,7 +72,7 @@ def judge(message, tags, chat=llm.chat):
                    f"User message:\n{message}")
     try:
         raw = chat(SYSTEM_PROMPT, user_prompt, component="JUDGE", json_mode=True, temperature=0.0)
-        d = json.loads(raw)
+        d = llm.parse_json(raw)
         write = bool(d.get("write", False))
         candidate = d.get("candidate")
         return Decision(

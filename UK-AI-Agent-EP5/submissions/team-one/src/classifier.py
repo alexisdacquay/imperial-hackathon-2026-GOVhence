@@ -9,7 +9,6 @@ The LLM is injectable (`chat=`), so tests use a fake and production uses a real
 open-weight model. If the LLM is unavailable or misbehaves, we degrade gracefully to
 a rule-based fallback — the pipeline must never crash because a model is offline.
 """
-import json
 from dataclasses import dataclass
 
 import llm
@@ -106,7 +105,7 @@ def classify(message, profile, known_tags=None, chat=llm.chat):
                    f"User message to classify:\n{message}")
     try:
         raw = chat(SYSTEM_PROMPT, user_prompt, component="CLASSIFIER", json_mode=True, temperature=0.0)
-        content = _hygiene(json.loads(raw).get("content_tags", []), known)
+        content = _hygiene(llm.parse_json(raw).get("content_tags", []), known)
     except (llm.LLMError, ValueError, TypeError, AttributeError):
         content = _fallback_content_tags(message, known)   # graceful degradation
     # Guardrail: content tags must never carry the user's role/department (that's identity).

@@ -12,6 +12,7 @@ No third-party dependency: uses urllib from the standard library.
 """
 import json
 import os
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -45,6 +46,18 @@ class LLMError(Exception):
     Callers must catch this and FALL BACK safely — the pipeline never crashes just
     because a model is slow or offline.
     """
+
+
+# Some open-weight models wrap JSON output in Markdown code fences (```json ... ```)
+# even in json_mode. Strip a leading/trailing fence before parsing.
+_JSON_FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
+
+
+def parse_json(text):
+    """Parse a JSON object from an LLM reply, tolerating ```json ... ``` (or ``` ... ```)
+    fences some models add. Raises ValueError (json.JSONDecodeError) if it still isn't valid
+    JSON — callers already catch that and fall back safely."""
+    return json.loads(_JSON_FENCE.sub("", str(text).strip()))
 
 
 def _config(component=None):
