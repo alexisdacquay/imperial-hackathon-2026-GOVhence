@@ -62,6 +62,22 @@ def test_llm_facing_text_never_says_memory():
     assert "knowledge base" in scaffolding
 
 
+def test_prompt_judges_write_on_content_not_form():
+    # Regression (2 Jul, live manual test): "The fleet cost $14M ... how much do we risk?"
+    # got write=False because the prompt said categorically "NO for questions". The write
+    # decision must judge the CONTENT (facts asserted), not the FORM (question vs statement).
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"] = system
+        return '{"read": true, "write": false, "candidate": null}'
+
+    judge.judge("x?", [], chat=rec)
+    sys_low = seen["system"].lower()
+    assert "no for questions" not in sys_low          # the old categorical exclusion is gone
+    assert "content, not the form" in sys_low         # a fact-carrying question may write
+
+
 def test_bad_json_falls_back_to_rules():
     d = judge.judge("The canteen serves free noodles on Fridays", ["food"], chat=_fake("not json"))
     assert d.write is True                     # rule-based fallback: substantive statement -> write

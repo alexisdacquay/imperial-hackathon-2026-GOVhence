@@ -26,14 +26,17 @@ DECISIONS:
   1. read  — should the knowledge base be searched for notes that help answer this message?
      YES for anything that could benefit from stored organisational knowledge — a question, a
      request, a topic, a task. NO only for content-free messages (greetings, thanks, small talk).
-  2. write — does this message contribute NEW, reusable knowledge worth saving as a note for the
-     WHOLE organisation? YES for statements that assert durable, shareable facts or context useful
-     to OTHER people (e.g. "the London office moved to Friar Street", "we don't ship to Tokyo
-     anymore"). NO for questions, opinions, personal or one-off chatter, or anything not broadly
+  2. write — does this message CONTAIN new, reusable knowledge worth saving as a note for the
+     WHOLE organisation? Judge the CONTENT, not the form: a question can still assert durable
+     facts on its way to asking ("The fleet cost $14M — should we insure it?" asserts the fleet
+     cost; "I'm late, when is my next slot?" asserts nothing worth keeping). YES when the message
+     states durable, shareable facts or context useful to OTHER people (e.g. "the London office
+     moved to Friar Street", "we don't ship to Tokyo anymore"). NO when it only asks, opines, or
+     chats — questions carrying no facts, personal or one-off chatter, or anything not broadly
      useful. Be discerning — the knowledge base is company-wide, so junk pollutes it for everyone.
-  3. candidate — ONLY if write is yes: the note to save, distilled faithfully from the user's
-     message. Keep the user's meaning; do NOT invent, expand, or infer beyond what they said.
-     Authenticity over polish.
+  3. candidate — ONLY if write is yes: the note to save — the FACTS the message asserts, distilled
+     faithfully; leave out the question part. Keep the user's meaning; do NOT invent, expand, or
+     infer beyond what they said. Authenticity over polish.
 
 GUARDRAILS (must follow):
   - You DECIDE only. You never retrieve, save, or answer, and you NEVER make access/permission
@@ -58,7 +61,11 @@ class Decision:
 
 
 def _fallback(message, tags):
-    """Deterministic offline decision when the LLM is unavailable (the old rule-based logic)."""
+    """Deterministic offline decision when the LLM is unavailable (the old rule-based logic).
+
+    Deliberately MORE conservative than the LLM prompt: offline rules cannot spot
+    facts embedded in a question, so a question never writes here. Degraded mode
+    misses some writes; it must never store junk."""
     text = str(message).strip()
     low = text.lower()
     if low in _GREETINGS:
