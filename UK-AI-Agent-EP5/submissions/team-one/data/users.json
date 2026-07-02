@@ -1,7 +1,11 @@
 {
-  "_comment": "User base / profile store. 'users' maps a name -> role; 'roles' defines each role's department + the CLEARANCES it holds (security labels the role may see). Whitelist-only: NO deny list, NO wildcard — access exists only where a label is explicitly granted, so a new label grants nobody anything until a role lists it. A memory is visible iff ALL its labels are within the user's clearances (see bouncer.py). Note alice (exec) simply does NOT hold 'legal' — exclusion by omission, not by deny. JSON has no comments, so this '_comment' key is ignored.",
+  "_comment": "User base / profile store. 'users' maps a name -> role; 'roles' defines each role's department + the CLEARANCES it holds (security labels the role may see). Whitelist-only: NO deny list, NO wildcard — access exists only where a label is explicitly granted. A memory is visible iff ALL its labels are within the user's clearances (see bouncer.py). Note exec simply does NOT hold 'legal' — exclusion by omission, not by deny. The ben-* users are the MANUAL-TEST set (one per clearance level, for src/live_test.py): ask the same question as each ben-* and watch the MemoryLane change. Only ben-auditor can see a dual-label {financials+legal} memory. JSON has no comments, so this '_comment' key is ignored.",
 
   "roles": {
+    "staff": {
+      "department": "general",
+      "clearances": ["shared"]
+    },
     "driver": {
       "department": "logistics",
       "clearances": ["shared", "logistics"]
@@ -13,12 +17,22 @@
     "counsel": {
       "department": "legal",
       "clearances": ["shared", "legal"]
+    },
+    "auditor": {
+      "department": "compliance",
+      "clearances": ["shared", "logistics", "financials", "legal"]
     }
   },
 
   "users": {
     "bob": "driver",
     "alice": "exec",
-    "carol": "counsel"
+    "carol": "counsel",
+
+    "ben-staff": "staff",
+    "ben-driver": "driver",
+    "ben-exec": "exec",
+    "ben-legal": "counsel",
+    "ben-auditor": "auditor"
   }
 }
