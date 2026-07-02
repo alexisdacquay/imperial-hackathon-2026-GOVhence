@@ -58,11 +58,11 @@ def handle(user, message):
     known = sorted({t for m in bouncer.filter_visible(MEMORY, clearances)
                     for t in m.get("topics", [])})
     cls = classifier.classify(message, profile, known_tags=known)
-    print(f"GOVhence -> Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
+    print(f"GOVhence <- Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
 
     # GOVhence -> Judge -> GOVhence  (Judge decides on the CONTENT, not on access)
     d = judge.judge(message, cls.content_tags)
-    print(f"GOVhence -> Judge      | read={d.read} write={d.write} candidate={d.candidate!r}")
+    print(f"GOVhence <- Judge      | read={d.read} write={d.write} candidate={d.candidate!r}")
 
     # GOVhence -> Bouncer (read path). GOVhence passes ONLY the topics + the
     # username. It does NOT pass access rights — the Bouncer reads clearances
@@ -70,13 +70,13 @@ def handle(user, message):
     lane = []
     if d.read:
         lane = bouncer.retrieve(cls.content_tags, user, MEMORY)
-        print(f"GOVhence -> Bouncer    | MemoryLane = {[m['text'] for m in lane]}")
+        print(f"GOVhence <- Bouncer    | MemoryLane = {[m['text'] for m in lane]}")
     else:
         print("GOVhence             | read not needed -> straight to Responder")
 
     # GOVhence -> Responder -> GOVhence
     answer = responder.respond(message, lane)
-    print(f"GOVhence -> Responder  | {answer!r}")
+    print(f"GOVhence <- Responder  | {answer!r}")
 
     # GOVhence -> User  (answer goes out first)
     print(f"GOVhence -> User       | {answer}")
@@ -86,7 +86,7 @@ def handle(user, message):
     # (trusted path), labels the candidate, and fails closed if it cannot.
     if d.write:
         ack = memoriser.memorise(d.candidate, cls.content_tags, MEMORY, user)
-        print(f"GOVhence -> Memoriser  | (async) {ack}")
+        print(f"GOVhence <- Memoriser  | (async) {ack}")
 
 
 def main(argv):
