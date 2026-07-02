@@ -17,28 +17,75 @@
 - [x] **D8** M6 — `cli.py` single entrypoint (loaders+bouncer+audit) + `memory_store.json` (items as data, no hardcoded values); fail-open store-id leak fixed.
 - [x] **D9** Loader totality — non-string `allow`/`deny`/`category` entries fail closed (were a raw `TypeError` crash that bypassed exit-2).
 - [x] **D10** Audit **checkpoint/running-tally** — O(1) appends + end-truncation detection + self-sealing chain + off-host anchor (first concrete step of #1).
+- [x] **D11** (2 Jul) Access model redesigned to **whitelist-only labels/clearances** (ALL-match,
+  `labels ⊆ clearances`; deny/`*` removed — exclusion by omission). Definitive vocabulary fixed:
+  `topics` (content, ANY-match, LLM, never grants access) / `labels` (on memories) / `clearances`
+  (held via roles). `src/bouncer.py` is now a REAL gate: loads `cocoshamem.seed.json` + `users.json`
+  itself, validates all element types, `ConfigError` fail-closed, empty-labels ⇒ invisible to all.
+  19 bouncer unit tests (temp-dir fixtures + real-store smoke); suite at 42.
+- [x] **D12** (2 Jul) Test-collection fix: a bare `pytest` from team-one/ recursed into `archive/v0.1`,
+  whose same-basename test modules (old `test_bouncer.py`) and old `bouncer.py` shadowed the live
+  suite — collection crashed before a single test ran (would also break CI's `python -m pytest -q`).
+  Fixed with `pytest.ini` (`testpaths = tests`); stale `__pycache__`/`.pytest_cache` cleared (both
+  are generated + gitignored, never committed).
 
 ---
 
 ## New backlog (numbered)
 
+### Vocabulary sweep follow-ups (from the D11 labels/clearances redesign)
+- [x] **V4.** (2 Jul) Responder is now a real LLM role — the FINAL answer the user reads.
+  **Memory-ENHANCED, not memory-limited** (owner decision, 2 Jul — SUPERSEDES the same-day
+  strict-grounding first cut): a normal, fully capable assistant. General questions are answered
+  from the model's own knowledge ("capital of France?" → "Paris"); the permitted MemoryLane is the
+  AUTHORITY on company matters — a note beats the model's beliefs, and a company question the notes
+  don't cover gets "I don't have that information", never an invented company fact. Ignores
+  instructions embedded in memory text; greetings get a natural reply. Graceful (not fail-closed)
+  degradation — the Responder is downstream of the gate so it cannot leak restricted memories: on
+  offline/junk it falls back to a plain deterministic summary of permitted content. Prompt hygiene
+  (owner feedback, 2 Jul): LLM-facing text NEVER says "memory" (a model reads that as its OWN
+  memory/chat history) and never mentions access/permissions/gates (can't leak machinery it never
+  heard of) — MemoryLane is framed as numbered "background notes" + the user's message, enforced by
+  a banned-vocabulary regression test. **All four LLM roles are now real** (Classifier / Judge /
+  Memoriser / Responder). 13 unit tests + 3 live smokes.
+- [x] **V5.** (2 Jul) LLM-facing vocabulary standard (owner decisions): to any model, the store is
+  **"the company's shared knowledge base"** holding **"notes"** — the word "memory" NEVER reaches an
+  LLM (a model reads it as its OWN memory/chat history; even the role name "MEMORISER" is
+  memory-flavoured, so its prompt says "security labeller"). Bare "label" is ambiguous too ("label"
+  doesn't natively mean access) → LLM-facing text always says **"security label"** and the Memoriser's
+  LLM JSON contract is `{"security_labels": [...]}`. "topics" stays (owner-approved). Internal/code
+  vocabulary is UNCHANGED (MemoryLane, Memoriser, item `labels`, `clearances` — the D11 set).
+  Banned-vocabulary regression tests cover all four LLM roles.
+- [ ] **V1.** Rename `classifier.py`'s `content_tags` → `topics` (and `known_tags` → `known_topics`)
+  so the LLM side uses the definitive vocabulary too; update govhence prints + classifier tests.
+- [x] **V2.** (2 Jul) Real write-time labelling — the Memoriser is now an LLM role: it classifies
+  the candidate against the known label vocabulary (union of all roles' clearances in `users.json`,
+  via `bouncer.all_labels`) and stores every label that applies (most-restrictive-wins). Two
+  deterministic guardrails wrap it (owner decisions, 2 Jul): **fail-closed writes** (offline / junk /
+  invalid labels → candidate REFUSED with a clear ack, store untouched; reads unaffected) and the
+  **writer cap** (labels must be ⊆ the writer's own clearances, read via the Bouncer's trusted path —
+  anti-poisoning; cap is on security labels ONLY, topic words stay free). 12 unit tests + live smoke.
+- [ ] **V3.** Docs sweep: HANDOFF §file-table + audit sections and README still describe the v0.1
+  `category`/allow/deny model in places; align wording with topics/labels/clearances.
+
 ### 🔴 Priority — security hardening (from the 2026-06-30 adversarial red-team + stress harness)
 > Surfaced by the multi-agent red-team and the adversarial stress harness (39k+ cases).
 > Listed FIRST: these are correctness / availability gaps in the audit + access core.
 > (The end-truncation gap found alongside these is already CLOSED by the checkpoint/anchor.)
-- [ ] **R1. Concurrent audit writes are not serialized (seq-race).** Two callers writing to the
-  same log at once both read the same last seq+hash (no lock) → duplicate seq → the hash chain
-  forks and `verify()` breaks permanently, and both accesses are served before any verify runs.
-  The O(1) checkpoint did NOT fix this. Fix: serialize writers — a single-writer queue, SQLite
-  WAL, or the sharded-chains-+-Merkle-root design (which also scales and pairs with #1 anchoring).
-  **Not a file lock.** (Spec: *"stay synchronized with source permissions under concurrent updates."*)
-- [ ] **R2. Audit write is not TOTAL on two adversarial values (crashes instead of failing closed).**
-  (a) A field larger than Python's CSV limit (~131 072 bytes) raises `csv.Error` on the next read —
-  not an `OSError`, so it escapes `AuditError`, crashes `cli.main` (which catches only
-  ConfigError/AuditError), and permanently bricks reading the log. (b) An unpaired UTF-16 surrogate
-  (e.g. `\ud800`) as a category raises `UnicodeEncodeError` on hash/CSV write — same uncaught-crash
-  path. Fix (cheap, like the loader-totality fix): cap field length and wrap the write so ANY failure
-  becomes `AuditError` (fail closed), never a raw exception.
+- [x] **R1. Concurrent audit writes are not serialized (seq-race). DONE (in `v0.1/audit.py`, commit
+  `6782ca1` ported).** A module-level `threading.Lock` (`_WRITE_LOCK`) serialises the whole
+  read→append→checkpoint section of `audit.log_decision`, so two writers can't fork the hash chain.
+  In-process only (deliberate: a lockfile can't crash-release, `fcntl`/`msvcrt` forbidden; cross-process
+  scale — queue / SQLite-WAL / sharded-chains+Merkle — deferred). 16-thread regression test passes.
+  Re-integrates when audit returns to the skeleton with the real Bouncer.
+- [x] **R2. Audit write is not TOTAL on two adversarial values (crashes instead of failing closed).**
+  ✅ **DONE (commit `3144c4f`, branch `feat/govhence-pipeline`).** (a) A field larger than Python's CSV
+  limit (~131 072 bytes) raised `csv.Error`; (b) an unpaired UTF-16 surrogate (e.g. `\ud800`) raised
+  `UnicodeEncodeError` on hash/CSV write — both escaped `AuditError` and crashed instead of failing
+  closed. Fixed at the single chokepoint `audit._defang`: every field is now encode-safe (surrogates
+  replaced) and length-capped (8192 chars) BEFORE it is hashed or written, so the hash chain stays
+  self-consistent; plus `log_decision` now also catches `csv.Error`/`UnicodeError`/`ValueError` and
+  re-raises as `AuditError` (defence-in-depth, fail closed). Regression tests added; suite green.
 - [ ] **R3. Derived memory does NOT inherit its source's access constraints (possible leak).** Today
   only REVOCATION propagates down the lineage; a derived item (summary/embedding) is gated purely by
   its OWN tag. So a summary tagged `schedules` derived from a `financials` source is served to a user
@@ -183,6 +230,16 @@
       4. Governed unit small enough (chunk/record) that "one unit = one sensitivity" actually holds.
     - Pairs with **#6** (Scribe classifies content), **#7** (size tripwire flags a unit that grew after
       tagging), and the metadata-not-body rule above (so injection can't forge the carrier tag).
+
+### Governance & data-source integration *(salvaged from PRD-original §4.2 / §10)*
+- [ ] **Datasource ACL sync.** Real sources (email / SharePoint / Teams / NFS) carry their **own** ACLs;
+  those must **sync into CocoShaMem scoping** rather than be re-invented — the spec's *"stay synchronized
+  with source permissions under concurrent updates."* Define the connectors + the sync mechanism (and how
+  a revocation at the source propagates into the store). Hackathon uses a simulated source; prod is the
+  open question.
+- [ ] **Memorisation consent.** Is the user's implicit *"desire to be memorised"* sufficient, or is
+  **explicit user/operator consent** required before writing content into a corporate-wide store? A
+  governance decision (privacy + provenance) to make before the Memoriser writes for real.
 
 ---
 

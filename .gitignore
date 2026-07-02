@@ -62,8 +62,9 @@ temp/
 # locally. The glob also covers audit_log.csv.checkpoint / .anchor / .tmp.
 audit_log.csv*
 
-# Runtime memory store — generated WHEN THE APP RUNS from cocoshamem.seed.json.
-# The seed is source (committed); the live store is a demo/runtime artifact.
+# Runtime CocoShaMem store — memories WRITTEN at run time. The committed copy is the
+# seed (cocoshamem.seed.json); the live store cocoshamem.json is regenerated from it
+# and appended to at runtime, so it is never committed (no runtime artifact in the repo).
 cocoshamem.json
 cocoshamem.json.tmp
 

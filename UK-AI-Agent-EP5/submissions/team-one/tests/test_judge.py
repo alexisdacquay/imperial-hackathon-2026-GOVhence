@@ -1,0 +1,104 @@
+"""Tests for the Judge.
+
+Deterministic tests inject a FAKE llm (no network) to verify parsing, the write/candidate
+guardrail, per-component routing, and graceful fallback. One live smoke test calls the real
+JUDGE model (glm-5.2), skipped if no JUDGE key is configured.
+"""
+import pytest
+
+import judge
+import llm
+
+
+def _fake(reply):
+    def _chat(system, user, **kw):
+        return reply
+    return _chat
+
+
+def test_read_and_write_from_llm():
+    d = judge.judge("The London office moved to Friar Street", ["london", "office"],
+                    chat=_fake('{"read": true, "write": true, "candidate": "The London office moved to Friar Street."}'))
+    assert d.read is True and d.write is True
+    assert "Friar Street" in d.candidate
+
+
+def test_query_reads_but_does_not_write():
+    d = judge.judge("where is the best sandwich?", ["food"],
+                    chat=_fake('{"read": true, "write": false, "candidate": null}'))
+    assert d.read is True and d.write is False and d.candidate is None
+
+
+def test_candidate_dropped_if_write_false():
+    # even if the model returns a candidate, ignore it unless write is true
+    d = judge.judge("x", [], chat=_fake('{"read": false, "write": false, "candidate": "junk"}'))
+    assert d.write is False and d.candidate is None
+
+
+def test_routes_to_JUDGE_component():
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["component"] = kw.get("component")
+        return '{"read": true, "write": false, "candidate": null}'
+
+    judge.judge("anything?", ["x"], chat=rec)
+    assert seen["component"] == "JUDGE"       # the Judge uses its own model, not the generic one
+
+
+def test_llm_facing_text_never_says_memory():
+    # Owner decision (2 Jul): to any model the store is "the company's shared knowledge
+    # base" holding "notes" — the word "memory" never reaches an LLM (a model reads it
+    # as its OWN memory/chat history).
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"], seen["user"] = system, user
+        return '{"read": true, "write": false, "candidate": null}'
+
+    judge.judge("where is the best sandwich?", ["food"], chat=rec)
+    scaffolding = (seen["system"] + "\n" + seen["user"]).lower()
+    assert "memor" not in scaffolding
+    assert "knowledge base" in scaffolding
+
+
+def test_prompt_judges_write_on_content_not_form():
+    # Regression (2 Jul, live manual test): "The fleet cost $14M ... how much do we risk?"
+    # got write=False because the prompt said categorically "NO for questions". The write
+    # decision must judge the CONTENT (facts asserted), not the FORM (question vs statement).
+    seen = {}
+
+    def rec(system, user, **kw):
+        seen["system"] = system
+        return '{"read": true, "write": false, "candidate": null}'
+
+    judge.judge("x?", [], chat=rec)
+    sys_low = seen["system"].lower()
+    assert "no for questions" not in sys_low          # the old categorical exclusion is gone
+    assert "content, not the form" in sys_low         # a fact-carrying question may write
+
+
+def test_bad_json_raises_loudly_no_silent_fallback():
+    # Owner decision (2 Jul): there is NO offline backup in this product. Junk output
+    # must raise (GOVhence then refuses the message) — never a keyword-rule fake judgement.
+    with pytest.raises(llm.LLMError):
+        judge.judge("The canteen serves free noodles on Fridays", ["food"], chat=_fake("not json"))
+
+
+def test_llm_offline_raises_loudly_no_silent_fallback():
+    def boom(system, user, **kw):
+        raise llm.LLMError("model offline")
+    with pytest.raises(llm.LLMError):
+        judge.judge("Hi", [], chat=boom)
+
+
+# --- live smoke: the real JUDGE model (glm-5.2) ----------------------------------
+def _judge_configured():
+    key = llm._config("JUDGE")[2]
+    return bool(key) and not key.startswith("your-")
+
+
+@pytest.mark.skipif(not _judge_configured(), reason="no JUDGE LLM key configured (.env)")
+def test_live_judge_smoke():
+    d = judge.judge("The London office has moved to Friar Street.", ["london", "office"])
+    assert isinstance(d.read, bool) and isinstance(d.write, bool)   # real JSON -> Decision

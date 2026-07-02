@@ -157,7 +157,9 @@ implementation — no real Domain Controller, etc.).
 - **R1 — concurrent audit writes not serialized** (seq-race forks the hash chain). *Fix: serialize
   writers (queue / SQLite WAL) or sharded chains + Merkle root.*
 - **R2 — audit write not total on two adversarial values** (oversized CSV field; unpaired surrogate →
-  raw crash, bricks the log). *Fix: cap field length + wrap any failure as `AuditError` (fail closed).*
+  raw crash, bricks the log). ✅ **CLOSED (commit `3144c4f`):** `audit._defang` now makes every field
+  encode-safe (surrogates replaced) and length-capped before hash/write; `log_decision` also catches
+  `csv.Error`/`UnicodeError`/`ValueError` → `AuditError` (fail closed). Regression-tested.
 - **R3 — derived memory doesn't inherit its source's access constraints.** *Fix: at write time the
   Memoriser/Scribe tags a derived unit with the **most-restrictive** parent tag (ties to #8).*
 

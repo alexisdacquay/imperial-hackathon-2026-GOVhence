@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<template id="__bundler_thumbnail">
+  <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" fill="#08100c"/>
+    <circle cx="50" cy="50" r="16" fill="none" stroke="#4ade80" stroke-width="2"/>
+    <text x="50" y="57" font-family="monospace" font-size="20" fill="#4ade80" text-anchor="middle">Ø</text>
+    <circle cx="26" cy="28" r="3" fill="#4ade80"/><circle cx="74" cy="28" r="3" fill="#4ade80"/>
+    <circle cx="80" cy="60" r="3" fill="#fbbf24"/><circle cx="30" cy="74" r="3" fill="#4ade80"/>
+    <line x1="50" y1="50" x2="26" y2="28" stroke="#4ade80" stroke-width="1" opacity="0.5"/>
+    <line x1="50" y1="50" x2="74" y2="28" stroke="#4ade80" stroke-width="1" opacity="0.5"/>
+    <line x1="50" y1="50" x2="80" y2="60" stroke="#fbbf24" stroke-width="1" stroke-dasharray="3 2" opacity="0.5"/>
+    <line x1="50" y1="50" x2="30" y2="74" stroke="#4ade80" stroke-width="1" opacity="0.5"/>
+  </svg>
+</template>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #060608; }
+  @keyframes dashflow { to { stroke-dashoffset: -22; } }
+  @keyframes fadeup { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+  @keyframes softpulse { 0%,100% { opacity: .45; } 50% { opacity: 1; } }
+  @keyframes govglow { 0%,100% { box-shadow: 0 0 0 1px rgba(74,222,128,0.30), 0 0 34px -10px rgba(74,222,128,0.45); } 50% { box-shadow: 0 0 0 1px rgba(74,222,128,0.45), 0 0 46px -8px rgba(74,222,128,0.6); } }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.09); border-radius: 8px; }
+</style>
+</helmet>
+<div style="width:1440px;height:912px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding:18px 20px;background:radial-gradient(1200px 700px at 30% -10%, #0d1512 0%, #08080b 55%, #060608 100%);font-family:'Instrument Sans',system-ui,sans-serif;color:#e7e7ea;overflow:hidden">
+
+  <!-- HEADER -->
+  <div style="display:flex;align-items:center;justify-content:space-between;flex:0 0 auto">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(150deg,#153024,#0e1218);border:1px solid rgba(74,222,128,0.35);display:flex;align-items:center;justify-content:center;color:{{ acc }};font-family:'JetBrains Mono',monospace;font-weight:600;font-size:15px">Ø</div>
+      <div>
+        <div style="font-size:16px;font-weight:600;letter-spacing:-0.01em">GOVhence <span style="color:{{ acc }}">MEM-Ø</span></div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079">Security Audit Console</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:22px">
+      <div style="text-align:right">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#6f7079">Access checks</div>
+        <div style="font-size:13px;font-weight:600"><span style="color:{{ acc }}">{{ allowCount }} allow</span> · <span style="color:#f87171">{{ denyCount }} deny</span></div>
+      </div>
+      <div style="width:1px;height:30px;background:rgba(255,255,255,0.08)"></div>
+      <div style="text-align:right">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#6f7079">Roundtrip</div>
+        <div style="font-size:13px;font-weight:600;font-family:'JetBrains Mono',monospace">{{ latencyStr }}</div>
+      </div>
+      <button onClick="{{ run }}" disabled="{{ runDisabled }}" style="{{ btnStyle }}">{{ btnLabel }}</button>
+    </div>
+  </div>
+
+  <!-- TOP REGION -->
+  <div style="flex:1 1 auto;display:flex;gap:14px;min-height:0">
+
+    <!-- DIAGRAM -->
+    <div style="flex:1.55 1 0;min-width:0;background:#0d0d11;border:1px solid rgba(255,255,255,0.07);border-radius:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03),0 24px 48px -32px rgba(0,0,0,0.9);display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid rgba(255,255,255,0.06)">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079">Orchestration Flow</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="{{ stepDotStyle }}"></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#c9c9d0">{{ currentStepTitle }}</div>
+        </div>
+      </div>
+      <div style="flex:1 1 auto;position:relative;background-image:linear-gradient(rgba(255,255,255,0.022) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.022) 1px,transparent 1px);background-size:26px 26px">
+        <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:780px;height:500px">
+          <svg viewBox="0 0 780 500" style="position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none">
+            <sc-for list="{{ edgeViews }}" as="e" hint-placeholder-count="7">
+              <line x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}" style="{{ e.style }}"></line>
+            </sc-for>
+          </svg>
+          <sc-for list="{{ nodeViews }}" as="n" hint-placeholder-count="8">
+            <div style="{{ n.style }}" onClick="{{ n.onClick }}">
+              <div style="{{ n.chipStyle }}">{{ n.chip }}</div>
+              <div style="font-weight:600;font-size:13px;line-height:1.1;margin-top:3px">{{ n.label }}</div>
+              <div style="font-size:10px;color:#8a8a92;font-family:'JetBrains Mono',monospace;margin-top:2px">{{ n.sub }}</div>
+            </div>
+          </sc-for>
+          <div style="position:absolute;left:6px;bottom:4px;display:flex;gap:14px;align-items:center;font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#6f7079">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:{{ acc }}"></span>LLM</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:2px;background:#fbbf24"></span>Script (no LLM)</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:0;border-top:1.5px dotted #94a3b8"></span>direct read</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:12px;height:0;border-top:1.5px dashed #fbbf24"></span>async write</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT STACK -->
+    <div style="flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:12px">
+      <!-- Identity -->
+      <div style="background:#0f0f14;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:14px 16px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079;margin-bottom:9px">Inbound message</div>
+        <div style="font-size:14px;line-height:1.4;color:#e7e7ea">“I'm a driver, where are the best sandwiches?”</div>
+        <div style="height:1px;background:rgba(255,255,255,0.06);margin:12px 0"></div>
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <div style="font-size:13px;font-weight:600">A. Rivera</div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#8a8a92">Profile Store · authoritative</div>
+          </div>
+          <div style="display:flex;gap:6px">
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(148,163,184,0.10);color:#cbd5e1;border:1px solid rgba(148,163,184,0.25)">driver</span>
+            <span style="font-family:'JetBrains Mono',monospace;font-size:10px;padding:3px 8px;border-radius:999px;background:rgba(148,163,184,0.10);color:#cbd5e1;border:1px solid rgba(148,163,184,0.25)">logistics</span>
+          </div>
+        </div>
+      </div>
+      <!-- Classifier -->
+      <div style="background:#0f0f14;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:14px 16px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079;margin-bottom:9px">Classifier · content tags</div>
+        <sc-if value="{{ hasRun }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-wrap:wrap;gap:6px">
+            <sc-for list="{{ contentTags }}" as="t" hint-placeholder-count="2">
+              <span style="{{ tagStyle }}">{{ t }}</span>
+            </sc-for>
+          </div>
+        </sc-if>
+        <sc-if value="{{ notRun }}" hint-placeholder-val="{{ true }}">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5a5a62">awaiting run…</div>
+        </sc-if>
+      </div>
+      <!-- Judge -->
+      <div style="background:#0f0f14;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:14px 16px">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079;margin-bottom:10px">Judge · decision</div>
+        <div style="display:flex;gap:10px;margin-bottom:9px">
+          <div style="{{ readBadgeStyle }}">READ · {{ readVal }}</div>
+          <div style="{{ writeBadgeStyle }}">WRITE · {{ writeVal }}</div>
+        </div>
+        <div style="font-size:11.5px;line-height:1.45;color:#9a9aa2">{{ judgeReason }}</div>
+      </div>
+      <!-- Responder -->
+      <div style="flex:1 1 auto;min-height:0;background:linear-gradient(160deg,#0f1712,#0e0e13);border:1px solid rgba(74,222,128,0.16);border-radius:14px;padding:14px 16px;display:flex;flex-direction:column">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.16em;text-transform:uppercase;color:{{ acc }};margin-bottom:9px">Responder → User</div>
+        <div style="font-size:13.5px;line-height:1.5;color:#e7e7ea;overflow:auto">{{ responseDisplay }}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOTTOM REGION -->
+  <div style="flex:0 0 296px;display:flex;gap:14px;min-height:0">
+
+    <!-- BOUNCER GATE -->
+    <div style="flex:1.35 1 0;min-width:0;background:#0d0d11;border:1px solid rgba(255,255,255,0.07);border-radius:16px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06)">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079">Bouncer · Access Gate</div>
+          <span style="font-family:'JetBrains Mono',monospace;font-size:9px;padding:2px 7px;border-radius:999px;background:rgba(251,191,36,0.12);color:#fbbf24;border:1px solid rgba(251,191,36,0.3)">SCRIPT · NO LLM</span>
+        </div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:#6f7079">strict tag match · RBAC/ACL · fail-closed</div>
+      </div>
+      <div style="flex:1 1 auto;overflow:auto;padding:6px 8px">
+        <sc-if value="{{ notRun }}" hint-placeholder-val="{{ true }}">
+          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#5a5a62;padding:14px">awaiting run…</div>
+        </sc-if>
+        <sc-for list="{{ evalRows }}" as="r" hint-placeholder-count="0">
+          <div style="{{ r.rowStyle }}">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              <div style="{{ r.badgeStyle }}">{{ r.decision }}</div>
+              <div style="min-width:0">
+                <div style="font-size:12.5px;color:#e7e7ea;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.text }}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#7c7c85;margin-top:2px">{{ r.id }} · match{ {{ r.matchedStr }} } · {{ r.aclStr }}</div>
+              </div>
+            </div>
+            <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:{{ r.reasonColor }};white-space:nowrap;padding-left:12px">{{ r.reason }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="padding:9px 16px;border-top:1px solid rgba(255,255,255,0.06);font-family:'JetBrains Mono',monospace;font-size:10px;color:#6f7079">
+        MemoryLane → Responder: <span style="color:{{ acc }}">{{ laneCount }} permitted</span> · <span style="color:#f87171">{{ denyCount }} denied</span> · every decision logged
+      </div>
+    </div>
+
+    <!-- AUDIT LOG -->
+    <div style="flex:1 1 0;min-width:0;background:#0d0d11;border:1px solid rgba(255,255,255,0.07);border-radius:16px;display:flex;flex-direction:column;overflow:hidden">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid rgba(255,255,255,0.06)">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:0.16em;text-transform:uppercase;color:#6f7079">Audit Log</div>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#6f7079">append-only · tamper-evident</span>
+      </div>
+      <div ref="{{ logRef }}" style="flex:1 1 auto;overflow:auto;padding:8px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.5">
+        <sc-if value="{{ noLog }}" hint-placeholder-val="{{ true }}">
+          <div style="color:#5a5a62;padding:6px 2px">— log empty —</div>
+        </sc-if>
+        <sc-for list="{{ logRows }}" as="l" hint-placeholder-count="0">
+          <div style="display:flex;gap:9px;align-items:baseline;padding:2px 0;animation:fadeup .25s ease">
+            <span style="color:#54545c;flex:0 0 auto">{{ l.t }}</span>
+            <span style="{{ l.badgeStyle }}">{{ l.code }}</span>
+            <span style="color:{{ l.textColor }};min-width:0">{{ l.text }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:912},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#4ade80&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;options&quot;:[&quot;#4ade80&quot;,&quot;#38bdf8&quot;,&quot;#c084fc&quot;,&quot;#fb923c&quot;]},&quot;stepMs&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:1200,&quot;min&quot;:600,&quot;max&quot;:2600,&quot;step&quot;:100,&quot;unit&quot;:&quot;ms&quot;,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Animation&quot;},&quot;autoRun&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Animation&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.nodes = [
+      { id:'gov', kind:'CORE', label:'GOVhence', sub:'sole orchestrator', cx:380, cy:250, w:150, h:80 },
+      { id:'user', kind:'USER', label:'User', sub:'driver · logistics', cx:74, cy:250, w:118, h:60 },
+      { id:'profile', kind:'DATA', label:'Profile Store', sub:'source of truth', cx:170, cy:70, w:146, h:58 },
+      { id:'classifier', kind:'LLM', label:'Classifier', sub:'tags msg + profile', cx:385, cy:50, w:150, h:58 },
+      { id:'judge', kind:'LLM', label:'Judge', sub:'read? / write?', cx:602, cy:80, w:124, h:58 },
+      { id:'bouncer', kind:'SCRIPT', label:'Bouncer', sub:'RBAC · ACL', cx:704, cy:270, w:134, h:66 },
+      { id:'memoriser', kind:'LLM', label:'Memoriser', sub:'async write', cx:596, cy:450, w:150, h:58 },
+      { id:'responder', kind:'LLM', label:'Responder', sub:'msg + MemoryLane', cx:322, cy:456, w:150, h:58 },
+    ];
+    this.profile = { name:'A. Rivera', role:'driver', dept:'logistics', clearance:'standard' };
+    this.userTags = ['driver','logistics'];
+    this.memoryStore = [
+      { id:'MEM-1042', text:"Depot 4 canteen — best chicken sandwiches; driver special 11:00–14:00.", tags:['food','sandwich','driver','depot-4'], acl:{ roles:['driver'], dept:['logistics'] } },
+      { id:'MEM-1044', text:"Dock B vending machines restock cold subs & drinks every Friday.", tags:['food','sandwich','logistics','vending'], acl:{ dept:['logistics'] } },
+      { id:'MEM-1043', text:"Executive deli platter, 5th-floor lounge (exec catering).", tags:['food','sandwich','exec'], acl:{ clearance:'exec' } },
+      { id:'MEM-2001', text:"Q3 catering budget overrun flagged in Finance review.", tags:['food','finance','budget'], acl:{ dept:['finance'] } },
+    ];
+    this.msg = "I'm a driver, where are the best sandwiches?";
+    this.timers = [];
+    this.logRef = React.createRef();
+    this.clock = new Date();
+  }
+
+  state = { phase:'idle', activeNode:null, stepIndex:-1, steps:[], log:[], data:null, response:'', latency:null, selected:null };
+
+  componentDidMount() {
+    if (this.props.autoRun !== false) this.timers.push(setTimeout(() => this.run(), 600));
+  }
+  componentWillUnmount() { this.clearTimers(); }
+  componentDidUpdate() {
+    const el = this.logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }
+  clearTimers() { this.timers.forEach(clearTimeout); this.timers = []; }
+
+  get acc() { return this.props.accentColor || '#4ade80'; }
+  hexA(hex, a) {
+    const h = (hex || '#4ade80').replace('#','');
+    const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+  fmt(d) {
+    const p = (n,l=2) => String(n).padStart(l,'0');
+    return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}`;
+  }
+
+  // ---- Bouncer (script only, no LLM) ----
+  checkAccess(acl, p) {
+    if (acl.roles && !acl.roles.includes(p.role)) return { ok:false, reason:`role '${p.role}' ∉ {${acl.roles.join(',')}}` };
+    if (acl.dept && !acl.dept.includes(p.dept)) return { ok:false, reason:`dept '${p.dept}' ∉ {${acl.dept.join(',')}}` };
+    if (acl.clearance) {
+      const rank = { standard:1, elevated:2, exec:3 };
+      if ((rank[p.clearance]||0) < (rank[acl.clearance]||99)) return { ok:false, reason:`clearance '${p.clearance}' < '${acl.clearance}'` };
+    }
+    return { ok:true, reason:'tags + RBAC/ACL satisfied' };
+  }
+  runBouncer(contentTags, p) {
+    const evals = [], lane = [];
+    for (const m of this.memoryStore) {
+      const matched = m.tags.filter(t => contentTags.includes(t));
+      if (matched.length === 0) continue;
+      const a = this.checkAccess(m.acl, p);
+      evals.push({ id:m.id, text:m.text, tags:m.tags, matched, acl:m.acl, decision:a.ok?'ALLOW':'DENY', reason:a.reason });
+      if (a.ok) lane.push(m);
+    }
+    return { evals, lane };
+  }
+  aclStr(acl) {
+    const parts = [];
+    if (acl.roles) parts.push(`role∈{${acl.roles.join(',')}}`);
+    if (acl.dept) parts.push(`dept∈{${acl.dept.join(',')}}`);
+    if (acl.clearance) parts.push(`clearance≥${acl.clearance}`);
+    return parts.join(' · ');
+  }
+
+  // ---- LLM calls ----
+  async classify() {
+    const sys = "You simulate two components of the GOVhence MEM-Ø pipeline. Output ONLY minified JSON, no prose, no code fences.";
+    const prompt = `Message: "${this.msg}"\nUser profile (from Profile Store, authoritative): role=driver, dept=logistics.\n\nClassifier: extract 1-3 lowercase single-word CONTENT tags for the message topic (reuse simple tags like food, sandwich, location). Do NOT include identity/role tags.\nJudge: decide read and write.\n- read = YES whenever the message asks a question or references any topic that stored memory could help answer (e.g. asking where to find something). read = NO ONLY for pure greetings or smalltalk with no information need (e.g. "hi", "thanks").\n- write = YES only if the message contains durable, reusable info worth storing; if so give a short memory candidate.\nReturn JSON: {"contentTags":[...],"judge":{"read":true|false,"write":true|false,"candidate":string|null,"reason":"one short sentence"}}`;
+    try {
+      const raw = await window.claude.complete({ model:'claude-haiku-4-5', max_tokens:400, system:sys, messages:[{ role:'user', content:prompt }] });
+      const j = JSON.parse(raw.match(/\{[\s\S]*\}/)[0]);
+      // Guard: a genuine question must trigger a memory read (a bare greeting won't contain '?').
+      let read = j.judge.read !== false;
+      if (!read && /\?\s*$/.test(this.msg.trim())) read = true;
+      return {
+        contentTags: (j.contentTags || ['food','sandwich']).slice(0,4).map(s => String(s).toLowerCase()),
+        judge: { read, write: !!j.judge.write, candidate: j.judge.candidate || null, reason: read !== (j.judge.read !== false) ? 'Question seeks stored info → read gate opened; nothing durable to write.' : (j.judge.reason || '') },
+      };
+    } catch (e) {
+      return { contentTags:['food','sandwich'], judge:{ read:true, write:false, candidate:null, reason:'A question about a known resource — worth checking memory; nothing durable to store.' } };
+    }
+  }
+  async respond(lane) {
+    const ctx = lane.length ? lane.map(m => `- (${m.id}) ${m.text}`).join('\n') : '(no memories retrieved)';
+    try {
+      const raw = await window.claude.complete({
+        model:'claude-haiku-4-5', max_tokens:200,
+        system:'You are the Responder LLM in GOVhence MEM-Ø. Answer the user in 1-2 short, friendly sentences using ONLY the MemoryLane snippets provided. Do not mention memory IDs. If none, say you have nothing on record.',
+        messages:[{ role:'user', content:`User message: "${this.msg}"\nMemoryLane:\n${ctx}` }],
+      });
+      return raw.trim();
+    } catch (e) {
+      return lane.length
+        ? "Best bet is the Depot 4 canteen — chicken sandwiches with a driver special from 11:00–14:00. Dock B's vending machines also restock cold subs on Fridays."
+        : "I don't have anything on record for that.";
+    }
+  }
+
+  buildSteps(read, write) {
+    const s = [];
+    const push = (node, title, detail) => s.push({ node, title, detail });
+    push('user', 'User → GOVhence', 'message + identity');
+    push('profile', 'GOVhence → Profile Store', 'read profile + access tags');
+    push('profile', 'Profile Store → GOVhence', 'profile + access tags (direct, never LLM)');
+    push('classifier', 'GOVhence → Classifier', 'msg + profile');
+    push('classifier', 'Classifier → GOVhence', 'content tags + user tags');
+    push('judge', 'GOVhence → Judge', 'msg + tags');
+    push('judge', 'Judge → GOVhence', 'read? / write? (+ candidate)');
+    if (read) {
+      push('bouncer', 'GOVhence → Bouncer', 'content tags + access tags');
+      push('bouncer', 'Bouncer → GOVhence', 'MemoryLane (permitted memories)');
+    }
+    push('responder', 'GOVhence → Responder', 'msg + MemoryLane');
+    push('responder', 'Responder → GOVhence', 'response');
+    push('user', 'GOVhence → User', 'final response delivered');
+    if (write) {
+      push('memoriser', 'GOVhence → Memoriser  (async)', 'msg + tags + candidate');
+      push('memoriser', 'Memoriser → GOVhence', 'write acknowledgment');
+    }
+    return s;
+  }
+
+  logPush(level, code, text) {
+    this.clock = new Date(this.clock.getTime() + 18 + Math.floor(Math.random()*70));
+    const entry = { t:this.fmt(this.clock), level, code, text };
+    this.setState(s => ({ log:[...s.log, entry] }));
+  }
+
+  emitLogs(step, dir) {
+    const d = this.state.data;
+    this.logPush('route', 'ROUTE', `${step.title} — ${step.detail}`);
+    if (step.node === 'judge' && dir === 'in' && d) {
+      this.logPush('info', 'JUDGE', `read=${d.judge.read}  write=${d.judge.write}`);
+    }
+    if (step.node === 'bouncer' && dir === 'in' && d) {
+      d.evals.forEach(ev => {
+        this.logPush(ev.decision === 'ALLOW' ? 'allow' : 'deny', ev.decision,
+          `${ev.id} · match{${ev.matched.join(',')}} · ${ev.decision === 'ALLOW' ? 'permitted' : ev.reason}`);
+      });
+      this.logPush('info', 'LANE', `MemoryLane assembled: ${d.lane.length} permitted, ${d.evals.length - d.lane.length} denied`);
+    }
+    if (step.node === 'memoriser' && dir === 'in' && d) {
+      this.logPush('write', 'WRITE', `stored under {${d.contentTags.join(',')}} — ack (async, reused tags)`);
+    }
+    if (step.node === 'user' && dir === 'out') {
+      this.logPush('info', 'REPLY', 'response returned to user');
+    }
+  }
+
+  playAnimation() {
+    const steps = this.state.steps;
+    const dur = this.props.stepMs || 1200;
+    let i = 0;
+    const seenIn = {};
+    const tick = () => {
+      if (i >= steps.length) { this.setState({ phase:'done', activeNode:null, stepIndex:steps.length-1 }); return; }
+      const st = steps[i];
+      const dir = seenIn[st.node] ? 'in' : (st.title.indexOf('→ GOV') > -1 || st.title.indexOf('Store → GOV') > -1 || st.title.indexOf('→ GOVhence') > -1 ? 'in' : 'out');
+      // determine direction by arrow target
+      const isIn = st.title.split('→')[1] && st.title.split('→')[1].trim().indexOf('GOVhence') === 0;
+      seenIn[st.node] = true;
+      this.setState({ stepIndex:i, activeNode:st.node, phase:'running' });
+      this.emitLogs(st, isIn ? 'in' : 'out');
+      i++;
+      this.timers.push(setTimeout(tick, dur));
+    };
+    tick();
+  }
+
+  async run() {
+    if (this.state.phase === 'loading' || this.state.phase === 'running') return;
+    this.clearTimers();
+    this.clock = new Date();
+    this.setState({ phase:'loading', log:[], stepIndex:-1, activeNode:null, selected:null, data:null, response:'', latency:null, steps:[] });
+    const t0 = performance.now();
+    const { contentTags, judge } = await this.classify();
+    const { evals, lane } = this.runBouncer(contentTags, this.profile);
+    const response = judge.read ? await this.respond(lane) : await this.respond([]);
+    const latency = Math.round(performance.now() - t0);
+    const steps = this.buildSteps(judge.read, judge.write);
+    this.setState(
+      { data:{ contentTags, userTags:this.userTags, judge, evals, lane }, response, latency, steps },
+      () => this.playAnimation()
+    );
+  }
+
+  // ---- styling helpers ----
+  chipStyle(kind) {
+    const map = {
+      LLM:   [this.hexA(this.acc,0.10), this.acc, this.hexA(this.acc,0.28)],
+      CORE:  [this.hexA(this.acc,0.16), this.acc, this.hexA(this.acc,0.42)],
+      SCRIPT:['rgba(251,191,36,0.12)', '#fbbf24', 'rgba(251,191,36,0.32)'],
+      DATA:  ['rgba(148,163,184,0.12)', '#cbd5e1', 'rgba(148,163,184,0.28)'],
+      USER:  ['rgba(255,255,255,0.06)', '#c9c9d0', 'rgba(255,255,255,0.14)'],
+    };
+    const [bg, fg, bd] = map[kind] || map.USER;
+    return { alignSelf:'flex-start', fontFamily:"'JetBrains Mono',monospace", fontSize:'8px', letterSpacing:'0.14em', padding:'2px 6px', borderRadius:'999px', background:bg, color:fg, border:`1px solid ${bd}` };
+  }
+  nodeStyle(n, isA, isS) {
+    const s = {
+      position:'absolute', left:(n.cx - n.w/2)+'px', top:(n.cy - n.h/2)+'px', width:n.w+'px', height:n.h+'px',
+      borderRadius:'13px', padding:'8px 12px', display:'flex', flexDirection:'column', justifyContent:'center',
+      cursor:'pointer', zIndex:2, background: n.id==='gov' ? 'linear-gradient(160deg,#16241c,#101319)' : '#14141a',
+      border: '1px solid rgba(255,255,255,0.09)', color:'#e7e7ea',
+      transition:'box-shadow .3s ease, border-color .3s ease, transform .3s ease',
+      boxShadow:'0 10px 26px -18px #000',
+    };
+    if (n.id === 'gov') { s.border = `1px solid ${this.hexA(this.acc,0.32)}`; s.animation = 'govglow 3.4s ease-in-out infinite'; }
+    if (isS && !isA) s.border = `1px solid ${this.hexA(this.acc,0.5)}`;
+    if (isA) {
+      s.border = `1px solid ${this.acc}`;
+      s.boxShadow = `0 0 0 1px ${this.acc}, 0 0 30px -4px ${this.hexA(this.acc,0.6)}`;
+      s.transform = 'translateY(-1px)';
+      s.animation = 'none';
+    }
+    return s;
+  }
+  edgeStyle(id, isA) {
+    if (isA) return { stroke:this.acc, strokeWidth:2.4, strokeDasharray:'5 6', animation:'dashflow .55s linear infinite', filter:`drop-shadow(0 0 4px ${this.hexA(this.acc,0.7)})` };
+    if (id === 'profile') return { stroke:'rgba(148,163,184,0.4)', strokeWidth:1.4, strokeDasharray:'2 5' };
+    if (id === 'memoriser') return { stroke:'rgba(251,191,36,0.32)', strokeWidth:1.4, strokeDasharray:'7 6' };
+    return { stroke:'rgba(255,255,255,0.09)', strokeWidth:1.4 };
+  }
+
+  renderVals() {
+    const st = this.state, d = st.data, acc = this.acc;
+    const active = st.activeNode;
+    const gov = this.nodes[0];
+
+    const nodeViews = this.nodes.map(n => ({
+      id:n.id, chip:n.kind, label:n.label, sub:n.sub,
+      chipStyle:this.chipStyle(n.kind),
+      style:this.nodeStyle(n, active === n.id, st.selected === n.id),
+      onClick:() => this.setState({ selected:n.id }),
+    }));
+    const edgeViews = this.nodes.slice(1).map(n => ({
+      id:n.id, x1:gov.cx, y1:gov.cy, x2:n.cx, y2:n.cy, style:this.edgeStyle(n.id, active === n.id),
+    }));
+
+    const hasRun = !!d;
+    const contentTags = d ? d.contentTags : [];
+    const tagStyle = { fontFamily:"'JetBrains Mono',monospace", fontSize:'11px', padding:'4px 10px', borderRadius:'999px', background:this.hexA(acc,0.10), color:acc, border:`1px solid ${this.hexA(acc,0.28)}` };
+
+    const readVal = d ? (d.judge.read ? 'YES' : 'NO') : '—';
+    const writeVal = d ? (d.judge.write ? 'YES' : 'NO') : '—';
+    const badge = (on) => ({ fontFamily:"'JetBrains Mono',monospace", fontSize:'11px', fontWeight:600, letterSpacing:'0.06em', padding:'5px 11px', borderRadius:'8px',
+      background: on ? this.hexA(acc,0.12) : 'rgba(255,255,255,0.05)', color: on ? acc : '#8a8a92', border:`1px solid ${on ? this.hexA(acc,0.3) : 'rgba(255,255,255,0.09)'}` });
+
+    const evalRows = (d ? d.evals : []).map(e => {
+      const allow = e.decision === 'ALLOW';
+      return {
+        id:e.id, text:e.text, decision:e.decision, matchedStr:e.matched.join(','), aclStr:this.aclStr(e.acl), reason:e.reason,
+        reasonColor: allow ? acc : '#f87171',
+        rowStyle:{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:'12px', padding:'7px 10px', margin:'2px 0', borderRadius:'9px', overflow:'hidden',
+          background: allow ? this.hexA(acc,0.05) : 'rgba(248,113,113,0.06)', border:`1px solid ${allow ? this.hexA(acc,0.16) : 'rgba(248,113,113,0.2)'}` },
+        badgeStyle:{ fontFamily:"'JetBrains Mono',monospace", fontSize:'9.5px', fontWeight:600, letterSpacing:'0.08em', padding:'3px 8px', borderRadius:'6px', flex:'0 0 auto',
+          background: allow ? this.hexA(acc,0.14) : 'rgba(248,113,113,0.15)', color: allow ? acc : '#f87171', border:`1px solid ${allow ? this.hexA(acc,0.3) : 'rgba(248,113,113,0.35)'}` },
+      };
+    });
+
+    const lc = { route:'#6f7079', info:'#c9c9d0', allow:acc, deny:'#f87171', write:'#fbbf24' };
+    const lbg = { route:'rgba(255,255,255,0.05)', info:'rgba(255,255,255,0.06)', allow:this.hexA(acc,0.12), deny:'rgba(248,113,113,0.14)', write:'rgba(251,191,36,0.14)' };
+    const logRows = st.log.map(l => ({
+      t:l.t, code:l.code, text:l.text, textColor: l.level==='route' ? '#9a9aa2' : (lc[l.level]||'#c9c9d0'),
+      badgeStyle:{ fontSize:'8.5px', letterSpacing:'0.08em', padding:'1px 6px', borderRadius:'4px', flex:'0 0 auto', color:lc[l.level]||'#c9c9d0', background:lbg[l.level]||'rgba(255,255,255,0.05)' },
+    }));
+
+    const stepTitles = { loading:'Contacting open-weight models…', idle:'Idle — press Run', done:'Complete' };
+    const currentStepTitle = st.stepIndex >= 0 && st.steps[st.stepIndex] ? st.steps[st.stepIndex].title : (stepTitles[st.phase] || 'Idle');
+    const running = st.phase === 'running' || st.phase === 'loading';
+
+    const btnDisabled = st.phase === 'loading' || st.phase === 'running';
+    const btnStyle = { fontFamily:"'Instrument Sans',sans-serif", fontSize:'13px', fontWeight:600, padding:'9px 18px', borderRadius:'10px', cursor: btnDisabled?'default':'pointer',
+      border:`1px solid ${this.hexA(acc,0.5)}`, background: btnDisabled ? 'rgba(255,255,255,0.05)' : this.hexA(acc,0.16), color: btnDisabled ? '#8a8a92' : acc,
+      opacity: btnDisabled ? 0.7 : 1, transition:'all .2s' };
+
+    return {
+      acc,
+      nodeViews, edgeViews,
+      hasRun, notRun: !hasRun, noLog: st.log.length === 0,
+      contentTags, tagStyle,
+      readVal, writeVal, readBadgeStyle:badge(d && d.judge.read), writeBadgeStyle:badge(d && d.judge.write),
+      judgeReason: d ? (d.judge.reason || '—') : 'Judge evaluates read- and write-worthiness for the same msg + tags.',
+      responseDisplay: st.response || (running ? '…' : 'The response will appear here once the pipeline completes.'),
+      evalRows, logRows,
+      laneCount: d ? d.lane.length : 0,
+      allowCount: d ? d.lane.length : 0,
+      denyCount: d ? (d.evals.length - d.lane.length) : 0,
+      latencyStr: st.latency != null ? st.latency + ' ms' : '—',
+      currentStepTitle,
+      stepDotStyle:{ width:'8px', height:'8px', borderRadius:'999px', background: running ? acc : '#3a3a42', boxShadow: running ? `0 0 10px ${acc}` : 'none', animation: running ? 'softpulse 1s ease-in-out infinite' : 'none' },
+      btnLabel: st.phase === 'loading' ? 'Analyzing…' : (hasRun ? 'Replay' : 'Run pipeline'),
+      btnStyle, runDisabled: btnDisabled,
+      run:() => this.run(),
+      logRef:this.logRef,
+    };
+  }
+}
+</script>
+</body>
+</html>
