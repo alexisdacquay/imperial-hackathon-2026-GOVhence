@@ -1,10 +1,12 @@
 {
-  "_comment": "CocoShaMem seed — the starting shared memories the walking skeleton loads. Each memory has an access 'category' (who may see it, enforced by the Bouncer against users.json) and content 'tags' (relevance/what it's about). JSON has no comments, so this '_comment' key is ignored.",
+  "_comment": "CocoShaMem seed — the starting shared memories. Each memory has 'labels' (security labels it CARRIES — who may see it; the Bouncer requires the user's clearances to cover ALL of them) and 'topics' (what it is ABOUT — relevance/search, ANY overlap with the query matches). The last memory carries TWO labels: only a user holding BOTH financials AND legal can see it — none of the seed users can. JSON has no comments, so this '_comment' key is ignored.",
 
   "memories": [
-    { "category": "shared",     "tags": ["sandwich", "london"], "text": "The deli on Carter Lane does great sandwiches." },
-    { "category": "shared",     "tags": ["parking", "london"],  "text": "Visitor parking is on Friar Street." },
-    { "category": "financials", "tags": ["revenue", "london"],  "text": "Q3 revenue for the London office was 4.2M." },
-    { "category": "legal",      "tags": ["contract", "penalty"],"text": "The Acme supplier contract has a late-delivery penalty clause." }
+    { "labels": ["shared"],               "topics": ["sandwich", "food", "london"], "text": "The deli on Carter Lane does great sandwiches." },
+    { "labels": ["shared"],               "topics": ["parking", "london"],          "text": "Visitor parking is on Friar Street." },
+    { "labels": ["logistics"],            "topics": ["delivery", "schedule"],       "text": "The Watford depot accepts deliveries only before 11am." },
+    { "labels": ["financials"],           "topics": ["revenue", "london"],          "text": "Q3 revenue for the London office was 4.2M." },
+    { "labels": ["legal"],                "topics": ["contract", "penalty"],        "text": "The Acme supplier contract has a late-delivery penalty clause." },
+    { "labels": ["financials", "legal"],  "topics": ["settlement", "acme"],         "text": "The Acme dispute settled for 250k — commercially confidential." }
   ]
 }

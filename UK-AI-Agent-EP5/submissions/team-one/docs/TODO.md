@@ -17,10 +17,25 @@
 - [x] **D8** M6 — `cli.py` single entrypoint (loaders+bouncer+audit) + `memory_store.json` (items as data, no hardcoded values); fail-open store-id leak fixed.
 - [x] **D9** Loader totality — non-string `allow`/`deny`/`category` entries fail closed (were a raw `TypeError` crash that bypassed exit-2).
 - [x] **D10** Audit **checkpoint/running-tally** — O(1) appends + end-truncation detection + self-sealing chain + off-host anchor (first concrete step of #1).
+- [x] **D11** (2 Jul) Access model redesigned to **whitelist-only labels/clearances** (ALL-match,
+  `labels ⊆ clearances`; deny/`*` removed — exclusion by omission). Definitive vocabulary fixed:
+  `topics` (content, ANY-match, LLM, never grants access) / `labels` (on memories) / `clearances`
+  (held via roles). `src/bouncer.py` is now a REAL gate: loads `cocoshamem.seed.json` + `users.json`
+  itself, validates all element types, `ConfigError` fail-closed, empty-labels ⇒ invisible to all.
+  19 bouncer unit tests (temp-dir fixtures + real-store smoke); suite at 42.
 
 ---
 
 ## New backlog (numbered)
+
+### Vocabulary sweep follow-ups (from the D11 labels/clearances redesign)
+- [ ] **V1.** Rename `classifier.py`'s `content_tags` → `topics` (and `known_tags` → `known_topics`)
+  so the LLM side uses the definitive vocabulary too; update govhence prints + classifier tests.
+- [ ] **V2.** Real write-time labelling: Memoriser currently stamps every new memory
+  `labels=["shared"]` (skeleton default). Decide labels from writer context/classification —
+  most-restrictive-wins — and test it.
+- [ ] **V3.** Docs sweep: HANDOFF §file-table + audit sections and README still describe the v0.1
+  `category`/allow/deny model in places; align wording with topics/labels/clearances.
 
 ### 🔴 Priority — security hardening (from the 2026-06-30 adversarial red-team + stress harness)
 > Surfaced by the multi-agent red-team and the adversarial stress harness (39k+ cases).

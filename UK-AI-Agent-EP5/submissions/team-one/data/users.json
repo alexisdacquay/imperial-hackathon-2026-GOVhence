@@ -1,29 +1,24 @@
 {
-  "_comment": "User base / profile store. 'users' maps a name -> role; 'roles' defines each role's department + the access categories it may see (RBAC). The walking skeleton reads name->role->department for profile tags; the access categories (allow/deny/*) are here ready for when the real Bouncer snaps back in. JSON has no comments, so this '_comment' key is ignored.",
-
-  "categories": [
-    "schedules",
-    "opening-hours",
-    "goods-weights-volumes",
-    "financials",
-    "legal",
-    "shared"
-  ],
+  "_comment": "User base / profile store. 'users' maps a name -> role; 'roles' defines each role's department + the CLEARANCES it holds (security labels the role may see). Whitelist-only: NO deny list, NO wildcard — access exists only where a label is explicitly granted, so a new label grants nobody anything until a role lists it. A memory is visible iff ALL its labels are within the user's clearances (see bouncer.py). Note alice (exec) simply does NOT hold 'legal' — exclusion by omission, not by deny. JSON has no comments, so this '_comment' key is ignored.",
 
   "roles": {
     "driver": {
       "department": "logistics",
-      "allow": ["schedules", "opening-hours", "goods-weights-volumes", "shared"]
+      "clearances": ["shared", "logistics"]
     },
     "exec": {
       "department": "leadership",
-      "allow": ["*"],
-      "deny": ["legal"]
+      "clearances": ["shared", "logistics", "financials"]
+    },
+    "counsel": {
+      "department": "legal",
+      "clearances": ["shared", "legal"]
     }
   },
 
   "users": {
     "bob": "driver",
-    "alice": "exec"
+    "alice": "exec",
+    "carol": "counsel"
   }
 }

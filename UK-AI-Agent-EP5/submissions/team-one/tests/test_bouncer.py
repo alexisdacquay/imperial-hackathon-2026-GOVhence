@@ -1,75 +1,173 @@
-"""Tests for the skeleton Bouncer's access property.
+"""Tests for the REAL Bouncer: whitelist labels/clearances access over CocoShaMem.
 
-The point being proven: the Bouncer decides access by reading the user's allowed
-categories DIRECTLY from users.json — given only the username. Content tags (which
-GOVhence relays from the Classifier) drive relevance ONLY; they can never grant
-access. So an LLM in the middle cannot smuggle access by passing tags.
+Vocabulary (definitive): topics = content, ANY-match, relevance only, from the LLM;
+labels = security labels a memory CARRIES; clearances = labels a user HOLDS.
+Rule: returned <=> labels non-empty AND labels ⊆ clearances AND topics ∩ query ≠ ∅.
 
-Run:  ../.venv/bin/python -m pytest test_bouncer.py -v   (from team-one/)
+Two layers of tests:
+  1. self-contained — tiny users.json + memory written to a TEMP dir (tmp_path),
+     so every rule is provable independent of the demo seed data;
+  2. real-data smoke — retrieve() with defaults loads the actual data/users.json
+     and data/cocoshamem.seed.json from disk (the real search path).
+
+Run:  ../.venv/bin/python -m pytest tests/ -v   (from team-one/)
 """
-from pathlib import Path
+import json
+
+import pytest
 
 import bouncer
+from bouncer import ConfigError
 
-USERS = Path(__file__).parent.parent / "data" / "users.json"
+# --- self-contained fixture data (independent of the demo seed) -------------------
 
-# a tiny memory set with access categories (independent of the seed file)
-MEM = [
-    {"category": "shared",     "tags": ["sandwich"], "text": "deli sandwiches"},
-    {"category": "financials", "tags": ["revenue"],  "text": "Q3 revenue 4.2M"},
-    {"category": "legal",      "tags": ["contract"], "text": "penalty clause"},
+USERS = {
+    "roles": {
+        "driver":  {"department": "logistics",  "clearances": ["shared", "logistics"]},
+        "lawyer":  {"department": "legal",      "clearances": ["shared", "legal"]},
+        "auditor": {"department": "compliance", "clearances": ["shared", "financials", "legal"]},
+    },
+    "users": {"ben": "driver", "lea": "lawyer", "max": "auditor"},
+}
+
+MEMS = [
+    {"labels": ["shared"],              "topics": ["bread", "food"],  "text": "bakery tip"},
+    {"labels": ["logistics"],           "topics": ["bread", "route"], "text": "bread van route"},
+    {"labels": ["financials", "legal"], "topics": ["settlement"],     "text": "confidential settlement"},
+    {"labels": [],                      "topics": ["bread"],          "text": "unlabelled orphan"},
 ]
+
+
+@pytest.fixture
+def users_path(tmp_path):
+    p = tmp_path / "users.json"
+    p.write_text(json.dumps(USERS), encoding="utf-8")
+    return p
 
 
 def _texts(lane):
     return {m["text"] for m in lane}
 
 
-def test_driver_allowed_shared():
-    # bob is a driver; 'shared' IS in the driver's allowed set in users.json.
-    lane = bouncer.retrieve(["sandwich"], "bob", MEM, users_path=USERS)
-    assert _texts(lane) == {"deli sandwiches"}
+# --- relevance: topics ANY-match, and topics are NOT credentials ------------------
+
+def test_topics_any_match_and_need_no_topic_in_profile(users_path):
+    # ben's clearances are {shared, logistics} — 'bread' is NOT among them, and it
+    # doesn't need to be: topics are relevance only. ANY overlap matches.
+    lane = bouncer.retrieve(["bread"], "ben", MEMS, users_path=users_path)
+    assert _texts(lane) == {"bakery tip", "bread van route"}
 
 
-def test_driver_denied_legal_by_direct_read():
-    # 'legal' is NOT in the driver's allowed set — the Bouncer denies it even though
-    # the content tag matches, because it reads access straight from users.json.
-    lane = bouncer.retrieve(["contract"], "bob", MEM, users_path=USERS)
+def test_no_topic_overlap_means_no_result(users_path):
+    lane = bouncer.retrieve(["weather"], "ben", MEMS, users_path=users_path)
     assert lane == []
 
 
-def test_driver_denied_financials():
-    lane = bouncer.retrieve(["revenue"], "bob", MEM, users_path=USERS)
+# --- permission: ALL labels must be held (labels ⊆ clearances) --------------------
+
+def test_all_labels_required_missing_one_denies(users_path):
+    # lea holds {shared, legal} but the settlement carries {financials, legal} —
+    # one label short -> denied, even though the topic matches.
+    lane = bouncer.retrieve(["settlement"], "lea", MEMS, users_path=users_path)
     assert lane == []
 
 
-def test_exec_allowed_financials():
-    # alice is an exec (allow '*', deny 'legal') -> may see financials.
-    lane = bouncer.retrieve(["revenue"], "alice", MEM, users_path=USERS)
-    assert _texts(lane) == {"Q3 revenue 4.2M"}
+def test_all_labels_held_grants(users_path):
+    # max holds {shared, financials, legal} — covers BOTH labels -> permitted.
+    lane = bouncer.retrieve(["settlement"], "max", MEMS, users_path=users_path)
+    assert _texts(lane) == {"confidential settlement"}
 
 
-def test_exec_still_denied_legal():
-    # exec denies 'legal' explicitly -> even the exec cannot see it.
-    lane = bouncer.retrieve(["contract"], "alice", MEM, users_path=USERS)
+def test_empty_labels_fail_closed_for_everyone(users_path):
+    # A memory with NO labels is visible to NOBODY (empty set would otherwise pass
+    # every subset check — that would be fail-open).
+    for user in USERS["users"]:
+        lane = bouncer.retrieve(["bread"], user, MEMS, users_path=users_path)
+        assert "unlabelled orphan" not in _texts(lane)
+
+
+def test_unknown_user_fails_closed(users_path):
+    assert bouncer.retrieve(["bread"], "mallory", MEMS, users_path=users_path) == []
+
+
+def test_topics_cannot_smuggle_access(users_path):
+    # Passing label names as TOPICS must not grant anything: ben queries with
+    # 'legal'/'financials'/'settlement' as topics and still sees nothing new.
+    lane = bouncer.retrieve(["legal", "financials", "settlement"], "ben", MEMS,
+                            users_path=users_path)
     assert lane == []
 
 
-def test_access_cannot_be_smuggled_via_tags():
-    # Passing 'legal'/'financials'/'exec' as CONTENT tags must NOT grant a driver
-    # access. Access comes ONLY from the user's users.json entry, read by the Bouncer.
-    lane = bouncer.retrieve(["contract", "revenue", "legal", "financials", "exec"],
-                            "bob", MEM, users_path=USERS)
-    assert all(m["category"] == "shared" for m in lane)  # never legal/financials
+def test_matching_is_strict_and_case_sensitive():
+    # The pure chokepoint: 'Logistics' != 'logistics'; empty labels never visible.
+    assert bouncer.visible({"logistics"}, {"logistics"}) is True
+    assert bouncer.visible({"Logistics"}, {"logistics"}) is False
+    assert bouncer.visible(set(), {"logistics"}) is False
 
 
-def test_unknown_user_fails_closed():
-    lane = bouncer.retrieve(["sandwich"], "mallory", MEM, users_path=USERS)
-    assert lane == []
+# --- totality: malformed data raises ConfigError, never a bare TypeError ----------
+
+def test_malformed_clearances_raise_configerror(tmp_path):
+    bad = {"roles": {"driver": {"clearances": ["shared", 42]}}, "users": {"ben": "driver"}}
+    p = tmp_path / "users.json"
+    p.write_text(json.dumps(bad), encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.clearances_for("ben", users_path=p)
 
 
-def test_allowed_categories_read_from_users_json():
-    # The allowed set is derived from users.json, not passed in.
-    assert bouncer.allowed_categories("bob", USERS) == {
-        "schedules", "opening-hours", "goods-weights-volumes", "shared"}
-    assert "legal" not in bouncer.allowed_categories("alice", USERS)  # exec denies legal
+def test_role_without_clearances_raises_configerror(tmp_path):
+    bad = {"roles": {"driver": {"department": "logistics"}}, "users": {"ben": "driver"}}
+    p = tmp_path / "users.json"
+    p.write_text(json.dumps(bad), encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.clearances_for("ben", users_path=p)
+
+
+def test_malformed_memory_labels_raise_configerror(users_path):
+    bad_mem = [{"labels": "logistics", "topics": ["bread"], "text": "labels not a list"}]
+    with pytest.raises(ConfigError):
+        bouncer.retrieve(["bread"], "ben", bad_mem, users_path=users_path)
+
+
+def test_memory_missing_labels_key_raises_configerror(users_path):
+    bad_mem = [{"topics": ["bread"], "text": "no labels key at all"}]
+    with pytest.raises(ConfigError):
+        bouncer.retrieve(["bread"], "ben", bad_mem, users_path=users_path)
+
+
+def test_query_topics_as_bare_string_rejected(users_path):
+    # A bare string would silently split into characters — reject it loudly.
+    with pytest.raises(ConfigError):
+        bouncer.retrieve("bread", "ben", MEMS, users_path=users_path)
+
+
+# --- real-data smoke: retrieve() defaults load data/users.json + cocoshamem ------
+
+def test_real_store_driver_sees_shared():
+    lane = bouncer.retrieve(["sandwich"], "bob")          # real files, real search
+    assert _texts(lane) == {"The deli on Carter Lane does great sandwiches."}
+
+
+def test_real_store_driver_denied_legal():
+    assert bouncer.retrieve(["contract"], "bob") == []
+
+
+def test_real_store_exec_sees_financials():
+    lane = bouncer.retrieve(["revenue"], "alice")
+    assert _texts(lane) == {"Q3 revenue for the London office was 4.2M."}
+
+
+def test_real_store_exec_lacks_legal_by_omission():
+    # No deny list anymore: alice simply does not HOLD the 'legal' clearance.
+    assert bouncer.retrieve(["contract"], "alice") == []
+
+
+def test_real_store_counsel_sees_legal():
+    lane = bouncer.retrieve(["contract"], "carol")
+    assert _texts(lane) == {"The Acme supplier contract has a late-delivery penalty clause."}
+
+
+def test_real_store_dual_label_memory_hidden_from_all_seed_users():
+    # {financials, legal} — no seed user holds both -> invisible to everyone.
+    for user in ("bob", "alice", "carol"):
+        assert bouncer.retrieve(["settlement", "acme"], user) == []

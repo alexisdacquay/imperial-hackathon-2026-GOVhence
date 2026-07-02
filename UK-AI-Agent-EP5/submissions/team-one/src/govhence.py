@@ -38,7 +38,7 @@ def _load_profiles(path=USERS_PATH):
 
 
 def _load_memory(path=MEMORY_PATH):
-    """the seed shared memories (list of {tags, text}) from cocoshamem.seed.json."""
+    """the seed shared memories (list of {labels, topics, text}) from cocoshamem.seed.json."""
     return json.loads(path.read_text(encoding="utf-8")).get("memories", [])
 
 
@@ -55,11 +55,12 @@ def handle(user, message):
         return
     print(f"GOVhence             | profile (from store, never LLM) = {profile}")
 
-    # GOVhence -> Classifier -> GOVhence  (LLM-backed). Scope the reusable tag vocabulary
-    # to what THIS user may see, so we never feed the model tags of memories they can't
-    # access (access-scoped known tags; the Bouncer still independently enforces retrieval).
-    allowed = bouncer.allowed_categories(user)
-    known = sorted({t for m in MEMORY if m.get("category") in allowed for t in m.get("tags", [])})
+    # GOVhence -> Classifier -> GOVhence  (LLM-backed). Scope the reusable topic vocabulary
+    # to what THIS user may see, so we never feed the model topics of memories they can't
+    # access (clearance-scoped known topics; the Bouncer still independently enforces retrieval).
+    clearances = bouncer.clearances_for(user)
+    known = sorted({t for m in bouncer.filter_visible(MEMORY, clearances)
+                    for t in m.get("topics", [])})
     cls = classifier.classify(message, profile, known_tags=known)
     print(f"GOVhence -> Classifier | content_tags={cls.content_tags}  user_tags={cls.user_tags}")
 
@@ -67,9 +68,9 @@ def handle(user, message):
     d = judge.judge(message, cls.content_tags)
     print(f"GOVhence -> Judge      | read={d.read} write={d.write} candidate={d.candidate!r}")
 
-    # GOVhence -> Bouncer (read path). GOVhence passes ONLY the content tags + the
-    # username. It does NOT pass access rights — the Bouncer reads those directly
-    # from users.json, so an LLM can never smuggle access via tags.
+    # GOVhence -> Bouncer (read path). GOVhence passes ONLY the topics + the
+    # username. It does NOT pass access rights — the Bouncer reads clearances
+    # directly from users.json, so an LLM can never smuggle access via topics.
     lane = []
     if d.read:
         lane = bouncer.retrieve(cls.content_tags, user, MEMORY)

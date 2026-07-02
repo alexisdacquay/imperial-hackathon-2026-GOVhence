@@ -26,12 +26,13 @@ log**. Deny-by-default, fail-closed — *zero-trust memory*.
 
 These are the spine of the project. Any change must honour all four.
 
-1. **Strict exact-match enforcement, FAIL-CLOSED.** The read-time access decision matches the
-   category tag EXACTLY (case- and whitespace-sensitive). NEVER normalize, interpret, fuzzy-match,
-   or LLM-guess at read time. Any mismatch / unknown tag / wrong type / internal error ⇒ **DENY**.
-   Failing OPEN (accidentally ALLOW) is the worst possible bug. The decision function must be
-   **TOTAL** (handle any input without raising). Reject non-set allowed-lists and non-string
-   categories — Python's `in` silently degrades to a substring/sequence match otherwise.
+1. **Strict exact-match enforcement, FAIL-CLOSED.** The read-time access decision requires the
+   user's **clearances** to cover **ALL** the memory's **labels** (`labels ⊆ clearances`), compared
+   EXACTLY (case- and whitespace-sensitive strings). Whitelist-only: NO deny list, NO wildcard.
+   A memory with NO labels is visible to NOBODY (an empty set passes every subset check — fail-open
+   otherwise). NEVER normalize, interpret, fuzzy-match, or LLM-guess at read time. Any mismatch /
+   unknown user / wrong type / internal error ⇒ **DENY**; malformed config/store data ⇒ loud
+   `ConfigError` (never a bare `TypeError` escaping from set operations).
 2. **No LLM in the access decision.** A model may classify/label content at **WRITE time only**
    (reusing a canonical tag vocabulary). The read path is pure deterministic code. The track
    requires: *"enforcement must be deterministic."*
@@ -50,7 +51,12 @@ These are the spine of the project. Any change must honour all four.
 **Status (branch `feat/govhence-pipeline`): M1–M6 done + tamper-evident audit checkpoint/anchor,
 PLUS the live GOVhence pipeline scaffold (Classifier/Judge/Memoriser/Responder as deterministic
 stubs behind a clean seam + end-to-end read/write flow) AND security fix R2 (audit write is now
-TOTAL — fail-closed on adversarial values). The automated suite passes (exit 0).**
+TOTAL — fail-closed on adversarial values). NEW (2 Jul): the access model is now **whitelist-only
+labels/clearances** (government-classification style, ALL-match; deny/`*` removed) with the
+DEFINITIVE vocabulary `topics` (content, ANY-match, from the LLM — never grants access) /
+`labels` (on memories) / `clearances` (held via roles in `users.json`); `src/bouncer.py` is a
+REAL gate (loads `cocoshamem.seed.json` + `users.json` itself, validates types, `ConfigError`
+fail-closed) with 19 unit tests. The automated suite passes (42 tests, exit 0).**
 > `main` is the stable baseline (M1–M6, no pipeline). The pipeline + R2 live on
 > `feat/govhence-pipeline` — work here. Next: R1 (serialize concurrent audit writes) and R3
 > (derived-memory inherits its source's access constraints), then wire a real open-weight model
