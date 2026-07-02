@@ -105,7 +105,7 @@ def classify(message, profile, known_tags=None, chat=llm.chat):
     user_prompt = (f"{context}\n\nKnown tags to reuse when suitable: {known}\n\n"
                    f"User message to classify:\n{message}")
     try:
-        raw = chat(SYSTEM_PROMPT, user_prompt, json_mode=True, temperature=0.0)
+        raw = chat(SYSTEM_PROMPT, user_prompt, component="CLASSIFIER", json_mode=True, temperature=0.0)
         content = _hygiene(json.loads(raw).get("content_tags", []), known)
     except (llm.LLMError, ValueError, TypeError, AttributeError):
         content = _fallback_content_tags(message, known)   # graceful degradation

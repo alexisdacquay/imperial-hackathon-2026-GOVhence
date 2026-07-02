@@ -47,21 +47,32 @@ class LLMError(Exception):
     """
 
 
-def _config():
+def _config(component=None):
+    """Resolve (base_url, model, api_key). A component (e.g. 'JUDGE', 'CLASSIFIER') reads its
+    own `<COMPONENT>_LLM_*` vars first, and falls back to the generic `LLM_*` vars — so each
+    role can run a different open-weight model (a fast one for tagging, a clever one for the
+    Judge) with no code change, just .env."""
+    def pick(name, default):
+        if component:
+            specific = os.environ.get(f"{component}_{name}")
+            if specific:
+                return specific
+        return os.environ.get(name, default)
     return (
-        os.environ.get("LLM_BASE_URL", "https://api.mor.org/api/v1").rstrip("/"),
-        os.environ.get("LLM_MODEL", "glm-5.2"),
-        os.environ.get("LLM_API_KEY", ""),   # required; comes from .env
+        pick("LLM_BASE_URL", "https://api.mor.org/api/v1").rstrip("/"),
+        pick("LLM_MODEL", "glm-5.2"),
+        pick("LLM_API_KEY", ""),   # required; comes from .env
     )
 
 
-def chat(system, user, *, json_mode=True, temperature=0.0, timeout=120):
+def chat(system, user, *, component=None, json_mode=True, temperature=0.0, timeout=120):
     """Send a system + user prompt; return the assistant's text. Raises LLMError on failure.
 
+    component routes to that role's model (per-component env, generic fallback).
     json_mode asks the server for a strict JSON object (a guardrail for parseable output).
-    temperature 0 keeps tagging stable/repeatable.
+    temperature 0 keeps decisions stable/repeatable.
     """
-    base, model, key = _config()
+    base, model, key = _config(component)
     body = {
         "model": model,
         "messages": [
