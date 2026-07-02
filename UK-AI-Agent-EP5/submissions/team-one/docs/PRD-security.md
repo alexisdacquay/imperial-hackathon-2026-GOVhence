@@ -1,9 +1,10 @@
 # GOVhence MEM-Ø — Security PRD (2026-07-02)
 
 > **What this is.** The security requirements for the NEW pipeline (`src/`), distilled from the
-> v0.1 prototype (`archive/v0.1/`) and the track spec. v0.1 is a **quarry, not a template**: we
-> mine its *ideas* (listed here as requirements) and re-implement them cleanly in the new
-> topics/labels/clearances architecture. **No v0.1 code is ported.**
+> v0.1 prototype and the track spec. v0.1 was a **quarry, not a template**: its *ideas* are fully
+> extracted into the requirements below, re-implemented cleanly in the new topics/labels/clearances
+> architecture. **No v0.1 code is ported, and the v0.1 archive is deleted** — this document is the
+> complete, self-sufficient record of everything worth keeping from it.
 >
 > **Authority order:** track spec (the 3 sources in `SKILL.md`) > this PRD > `PRD.md` (process).
 > Verbatim spec lines this PRD exists to satisfy:
