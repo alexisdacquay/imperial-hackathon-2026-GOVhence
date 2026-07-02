@@ -26,7 +26,6 @@ import responder
 # --- data stores: loaded from JSON, never hardcoded in the script ---------------
 _DATA = Path(__file__).parent.parent / "data"  # sibling of src/
 USERS_PATH = _DATA / "users.json"              # the user base / profile store
-MEMORY_PATH = _DATA / "cocoshamem.seed.json"   # CocoShaMem seed (shared memories)
 
 
 def _load_profiles(path=USERS_PATH):
@@ -37,13 +36,10 @@ def _load_profiles(path=USERS_PATH):
             for name, role in users.items()}
 
 
-def _load_memory(path=MEMORY_PATH):
-    """the seed shared memories (list of {labels, topics, text}) from cocoshamem.seed.json."""
-    return json.loads(path.read_text(encoding="utf-8")).get("memories", [])
-
-
 PROFILES = _load_profiles()
-MEMORY = _load_memory()
+# CocoShaMem, read via the Bouncer's loader (runtime store if the Memoriser has
+# written one, else the committed seed). GOVhence only READS; the Memoriser writes.
+MEMORY = bouncer.load_memories()
 
 
 def handle(user, message):

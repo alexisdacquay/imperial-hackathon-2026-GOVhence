@@ -18,7 +18,17 @@ Two deterministic guardrails wrap the LLM (code, not prompt — the LLM only SUG
 No LLM expansion: the candidate text is stored verbatim; topics come from the
 Classifier and are reused as-is (deduped). Injectable (`chat=`) for tests; routed to
 the MEMORISER model via per-component env (generic LLM_* fallback).
+
+PERSISTENCE (the Memoriser is the ONLY writer — PRD roles table): an accepted
+memory is appended to the runtime store `cocoshamem.json` ATOMICALLY (write a
+.tmp, then os.replace), seeded from the committed seed on first write. Disk
+failure -> the write is REFUSED like any other guardrail: nothing half-written,
+RAM and disk never disagree. The Bouncer/GOVhence only READ the store.
 """
+import json
+import os
+from pathlib import Path
+
 import llm
 import bouncer
 
@@ -63,6 +73,28 @@ def _refuse(reason):
     return f"NOT stored: {reason}"
 
 
+def _persist(item, store_path, seed_path):
+    """Append one accepted item to the runtime store file, ATOMICALLY.
+
+    First write seeds the runtime store from the committed seed (the seed file
+    itself is never modified). Write-tmp-then-os.replace means a crash mid-write
+    can never leave a corrupt store. Any problem raises — the caller refuses the
+    write (fail-closed) and the store stays exactly as it was.
+    """
+    store = Path(store_path)
+    source = store if store.exists() else Path(seed_path)
+    if source.exists():
+        data = json.loads(source.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("memories", []), list):
+            raise bouncer.ConfigError(f"memory store {source}: 'memories' must be a list")
+    else:
+        data = {"memories": []}                      # no store, no seed: start empty
+    data.setdefault("memories", []).append(item)
+    tmp = store.with_name(store.name + ".tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, store)                           # atomic on every OS
+
+
 def _writer_context(user, users_path):
     """role + department for the prompt (disambiguation only — NEVER the name).
     Defensive: any malformed shape just degrades to 'unknown'."""
@@ -79,12 +111,15 @@ def _writer_context(user, users_path):
 
 
 def memorise(candidate, topics, memory, user, users_path=bouncer._USERS_PATH,
-             chat=llm.chat):
+             chat=llm.chat, store_path=bouncer._STORE_PATH,
+             seed_path=bouncer._SEED_PATH):
     """candidate + topics + store + WRITER -> ack string (stores, or refuses loudly).
 
     The LLM suggests labels; deterministic code validates them (known vocabulary,
-    non-empty, within the writer's clearances) and only then appends. Any failure
-    on the way -> the write is REFUSED (fail-closed) and the store is untouched.
+    non-empty, within the writer's clearances), PERSISTS the item to the runtime
+    store on disk, and only then appends to the in-RAM list. Any failure on the
+    way — including a disk failure — -> the write is REFUSED (fail-closed) and
+    both the file and the list are untouched.
     """
     try:
         vocabulary = bouncer.all_labels(users_path)
@@ -119,5 +154,11 @@ def memorise(candidate, topics, memory, user, users_path=bouncer._USERS_PATH,
 
     item = {"labels": sorted(labels), "topics": list(dict.fromkeys(topics)),
             "text": str(candidate)}
+    # Persist FIRST, then update the in-RAM list — so a disk failure refuses the
+    # write outright and RAM never claims a memory the store doesn't have.
+    try:
+        _persist(item, store_path, seed_path)
+    except (OSError, ValueError, bouncer.ConfigError) as e:
+        return _refuse(f"could not persist to the store ({e}) — fail-closed")
     memory.append(item)
     return f"stored {item['text']!r} {item['labels']} with topics {item['topics']}"

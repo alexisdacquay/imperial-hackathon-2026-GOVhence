@@ -167,33 +167,52 @@ def test_broken_memory_store_raises_configerror_not_raw_errors(tmp_path):
         bouncer.load_memories(memory_path=bad)
 
 
-# --- real-data smoke: retrieve() defaults load data/users.json + cocoshamem ------
+# --- store resolution: runtime store (Memoriser-written) preferred, seed fallback --
+
+def test_resolve_memory_path_prefers_runtime_store(tmp_path):
+    seed = tmp_path / "seed.json"
+    seed.write_text("{}", encoding="utf-8")
+    store = tmp_path / "store.json"
+    # no runtime store yet -> the seed
+    assert bouncer.resolve_memory_path(store, seed) == seed
+    # once the Memoriser has written one -> the store wins
+    store.write_text("{}", encoding="utf-8")
+    assert bouncer.resolve_memory_path(store, seed) == store
+
+
+# --- real-data smoke: the actual data/users.json + the committed SEED ------------
+# Pinned to the SEED file explicitly: a live run creates the runtime store
+# (data/cocoshamem.json, git-ignored) and these assertions must not depend on
+# whatever was taught at runtime.
+
+SEED = bouncer._SEED_PATH
+
 
 def test_real_store_driver_sees_shared():
-    lane = bouncer.retrieve(["sandwich"], "bob")          # real files, real search
+    lane = bouncer.retrieve(["sandwich"], "bob", memory_path=SEED)   # real files
     assert _texts(lane) == {"The deli on Carter Lane does great sandwiches."}
 
 
 def test_real_store_driver_denied_legal():
-    assert bouncer.retrieve(["contract"], "bob") == []
+    assert bouncer.retrieve(["contract"], "bob", memory_path=SEED) == []
 
 
 def test_real_store_exec_sees_financials():
-    lane = bouncer.retrieve(["revenue"], "alice")
+    lane = bouncer.retrieve(["revenue"], "alice", memory_path=SEED)
     assert _texts(lane) == {"Q3 revenue for the London office was 4.2M."}
 
 
 def test_real_store_exec_lacks_legal_by_omission():
     # No deny list anymore: alice simply does not HOLD the 'legal' clearance.
-    assert bouncer.retrieve(["contract"], "alice") == []
+    assert bouncer.retrieve(["contract"], "alice", memory_path=SEED) == []
 
 
 def test_real_store_counsel_sees_legal():
-    lane = bouncer.retrieve(["contract"], "carol")
+    lane = bouncer.retrieve(["contract"], "carol", memory_path=SEED)
     assert _texts(lane) == {"The Acme supplier contract has a late-delivery penalty clause."}
 
 
 def test_real_store_dual_label_memory_hidden_from_all_seed_users():
     # {financials, legal} — no seed user holds both -> invisible to everyone.
     for user in ("bob", "alice", "carol"):
-        assert bouncer.retrieve(["settlement", "acme"], user) == []
+        assert bouncer.retrieve(["settlement", "acme"], user, memory_path=SEED) == []

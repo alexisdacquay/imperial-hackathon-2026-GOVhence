@@ -30,7 +30,8 @@ from pathlib import Path
 
 _DATA = Path(__file__).parent.parent / "data"
 _USERS_PATH = _DATA / "users.json"
-_MEMORY_PATH = _DATA / "cocoshamem.seed.json"
+_SEED_PATH = _DATA / "cocoshamem.seed.json"  # committed demo seed (never written at runtime)
+_STORE_PATH = _DATA / "cocoshamem.json"      # runtime store (git-ignored; the Memoriser writes it)
 
 
 class ConfigError(Exception):
@@ -132,8 +133,20 @@ def filter_visible(memories, clearances):
 
 # --- the memory store + the full retrieval path ----------------------------------
 
-def load_memories(memory_path=_MEMORY_PATH):
-    """Load CocoShaMem from disk, validating every item at the door."""
+def resolve_memory_path(store_path=_STORE_PATH, seed_path=_SEED_PATH):
+    """Which file to READ memories from: the runtime store once the Memoriser has
+    written one, else the committed seed. (The Memoriser owns all WRITING.)"""
+    store = Path(store_path)
+    return store if store.exists() else Path(seed_path)
+
+
+def load_memories(memory_path=None):
+    """Load CocoShaMem from disk, validating every item at the door.
+
+    memory_path=None (the normal case) resolves to the runtime store if it
+    exists, else the committed seed — so 'teach, restart, recall' works."""
+    if memory_path is None:
+        memory_path = resolve_memory_path()
     raw = _load_json(memory_path, "memory store").get("memories", [])
     if not isinstance(raw, list):
         raise ConfigError("memory store: 'memories' must be a list")
@@ -143,13 +156,13 @@ def load_memories(memory_path=_MEMORY_PATH):
 
 
 def retrieve(query_topics, user, memories=None, users_path=_USERS_PATH,
-             memory_path=_MEMORY_PATH):
+             memory_path=None):
     """query topics (relevance, from the LLM) + user (identity) -> the MemoryLane:
     memories that are BOTH permitted (labels ⊆ clearances) and relevant (ANY topic).
 
-    If `memories` is None the store is loaded from cocoshamem — the real search
-    path. Access is decided ONLY by labels vs the user's clearances (read here
-    from users.json), never by anything in `query_topics`.
+    If `memories` is None the store is loaded from disk (runtime store, falling
+    back to the seed — see resolve_memory_path). Access is decided ONLY by labels
+    vs the user's clearances (read here from users.json), never by `query_topics`.
     """
     want = _topic_set(query_topics)
     clearances = clearances_for(user, users_path)
