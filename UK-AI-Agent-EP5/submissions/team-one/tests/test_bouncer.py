@@ -141,6 +141,32 @@ def test_query_topics_as_bare_string_rejected(users_path):
         bouncer.retrieve("bread", "ben", MEMS, users_path=users_path)
 
 
+def test_broken_users_file_raises_configerror_not_raw_errors(tmp_path):
+    # Missing file, invalid JSON, and a non-object top level must all surface as
+    # ConfigError — never a bare FileNotFoundError/JSONDecodeError/AttributeError.
+    with pytest.raises(ConfigError):
+        bouncer.clearances_for("ben", users_path=tmp_path / "nope.json")
+    bad = tmp_path / "users.json"
+    bad.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.clearances_for("ben", users_path=bad)
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.clearances_for("ben", users_path=bad)
+
+
+def test_broken_memory_store_raises_configerror_not_raw_errors(tmp_path):
+    with pytest.raises(ConfigError):
+        bouncer.load_memories(memory_path=tmp_path / "nope.json")
+    bad = tmp_path / "mem.json"
+    bad.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.load_memories(memory_path=bad)
+    bad.write_text("[1, 2, 3]", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.load_memories(memory_path=bad)
+
+
 # --- real-data smoke: retrieve() defaults load data/users.json + cocoshamem ------
 
 def test_real_store_driver_sees_shared():

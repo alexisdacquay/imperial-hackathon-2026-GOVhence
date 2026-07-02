@@ -39,6 +39,19 @@ class ConfigError(Exception):
 
 # --- validation helpers (totality: element TYPES checked, not just containers) ---
 
+def _load_json(path, what):
+    """Read a JSON object from disk. Missing/unreadable file, invalid JSON, or a
+    non-object top level all raise ConfigError (loud, fail-closed) — never a bare
+    FileNotFoundError/JSONDecodeError leaking to callers who catch ConfigError."""
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        raise ConfigError(f"{what}: cannot read {path}: {e}") from e
+    if not isinstance(data, dict):
+        raise ConfigError(f"{what}: top level must be an object, got {type(data).__name__}")
+    return data
+
+
 def _str_set(value, what):
     """value must be a list of strings -> set of them; anything else -> ConfigError."""
     if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
@@ -80,7 +93,7 @@ def clearances_for(user, users_path=_USERS_PATH):
     Unknown or invalid user -> empty set (fail-closed). A role with a missing or
     malformed 'clearances' list is a config bug -> ConfigError (loud, fail-closed).
     """
-    data = json.loads(Path(users_path).read_text(encoding="utf-8"))
+    data = _load_json(users_path, "users.json")
     users, roles = data.get("users", {}), data.get("roles", {})
     if not isinstance(users, dict) or not isinstance(roles, dict):
         raise ConfigError("users.json: 'users' and 'roles' must be objects")
@@ -95,6 +108,22 @@ def clearances_for(user, users_path=_USERS_PATH):
     return _str_set(rdef["clearances"], f"role {role!r} 'clearances'")
 
 
+def all_labels(users_path=_USERS_PATH):
+    """The known security-label vocabulary: the union of every role's clearances in
+    users.json. This is what a write-time labeller may choose from — a label nobody
+    could ever hold cannot be assigned. Malformed config -> ConfigError."""
+    data = _load_json(users_path, "users.json")
+    roles = data.get("roles")
+    if not isinstance(roles, dict):
+        raise ConfigError("users.json: 'roles' must be an object")
+    labels = set()
+    for role, rdef in roles.items():
+        if not isinstance(rdef, dict) or "clearances" not in rdef:
+            raise ConfigError(f"users.json: role {role!r} has no 'clearances' list")
+        labels |= _str_set(rdef["clearances"], f"role {role!r} 'clearances'")
+    return labels
+
+
 def filter_visible(memories, clearances):
     """Permission HALF only (no relevance) — e.g. for scoping the Classifier's
     known-topics vocabulary to what this user may see."""
@@ -105,7 +134,7 @@ def filter_visible(memories, clearances):
 
 def load_memories(memory_path=_MEMORY_PATH):
     """Load CocoShaMem from disk, validating every item at the door."""
-    raw = json.loads(Path(memory_path).read_text(encoding="utf-8")).get("memories", [])
+    raw = _load_json(memory_path, "memory store").get("memories", [])
     if not isinstance(raw, list):
         raise ConfigError("memory store: 'memories' must be a list")
     for item in raw:
