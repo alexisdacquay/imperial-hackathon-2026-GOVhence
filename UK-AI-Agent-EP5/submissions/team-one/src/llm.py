@@ -13,9 +13,17 @@ No third-party dependency: uses urllib from the standard library.
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+
+# Open-weight endpoints (esp. mor.org) intermittently return an EMPTY completion
+# for a valid request — observed ~2-in-3 on glm-5.2 for a normal prompt. That is a
+# transient server hiccup, not a real refusal, so we retry a few times with a short
+# backoff before giving up. Retrying also covers transient network/HTTP errors.
+_MAX_ATTEMPTS = 4
+_BACKOFF_SECONDS = 0.6
 
 
 def _load_dotenv():
@@ -78,12 +86,19 @@ def _config(component=None):
     )
 
 
-def chat(system, user, *, component=None, json_mode=True, temperature=0.0, timeout=120):
+def chat(system, user, *, component=None, json_mode=True, temperature=0.0, timeout=120,
+         attempts=_MAX_ATTEMPTS, _sleep=time.sleep):
     """Send a system + user prompt; return the assistant's text. Raises LLMError on failure.
 
     component routes to that role's model (per-component env, generic fallback).
     json_mode asks the server for a strict JSON object (a guardrail for parseable output).
     temperature 0 keeps decisions stable/repeatable.
+
+    Retries transient failures — a network/HTTP error OR an EMPTY completion (a known
+    intermittent behaviour of some open-weight endpoints) — up to `attempts` times with
+    a short linear backoff, then raises the last LLMError. An empty reply is transient,
+    NOT a refusal, so retrying it (rather than failing the message) is what keeps the
+    pipeline usable on a flaky endpoint.
     """
     base, model, key = _config(component)
     body = {
@@ -96,16 +111,25 @@ def chat(system, user, *, component=None, json_mode=True, temperature=0.0, timeo
     }
     if json_mode:
         body["response_format"] = {"type": "json_object"}
+    data_bytes = json.dumps(body).encode("utf-8")
 
-    req = urllib.request.Request(
-        f"{base}/chat/completions",
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data["choices"][0]["message"]["content"]
-    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError) as e:
-        raise LLMError(f"LLM call failed: {e}") from e
+    last_err = None
+    for attempt in range(max(1, attempts)):
+        try:
+            req = urllib.request.Request(
+                f"{base}/chat/completions",
+                data=data_bytes,
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {key}"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            content = data["choices"][0]["message"]["content"]
+            if content and content.strip():
+                return content
+            last_err = LLMError(f"empty completion from {model!r} (attempt {attempt + 1})")
+        except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError) as e:
+            last_err = LLMError(f"LLM call failed: {e}")
+        if attempt < attempts - 1:
+            _sleep(_BACKOFF_SECONDS * (attempt + 1))
+    raise last_err
