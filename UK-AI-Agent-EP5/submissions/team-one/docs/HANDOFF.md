@@ -166,7 +166,7 @@ a regression test and the FULL suite passes (exit 0). 4. You showed real evidenc
 ## 6. Hard constraints (hackathon)
 
 - **Open-weight models only** in the product (Llama/Qwen/Mistral via **BasedAPIs**). No closed models
-  (no GPT/Claude/Gemini) in the loop. LLMs may LABEL at write time, never DECIDE access.
+  in the loop. LLMs may LABEL at write time, never DECIDE access.
 - **Never commit secrets.** Use `.env.example` with placeholders; keep real `.env` local. Throwaway
   wallet only if doing the optional blockchain-anchoring upside.
 - Judging weights: autonomy/tech 30% · innovation 25% · use of BasedAI/sponsor tech 20% ·

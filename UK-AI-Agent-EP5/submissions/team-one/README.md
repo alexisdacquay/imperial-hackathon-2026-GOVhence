@@ -228,7 +228,7 @@ team-one/
 ├── data/                   users.json (roles → clearances) · cocoshamem.seed.json (memories)
 │                           lineage.json (revocations) · events.jsonl (runtime feed, git-ignored)
 ├── tests/                  the pytest suite — 109 tests
-├── GUI/                    Audit Console (serve_gui.py · index.html)
+├── GUI/                    Audit Console (python GUI/serve_gui.py)
 └── docs/                   PRD.md · PRD-security.md (threat model) · ROADMAP.md · …
 ```
 

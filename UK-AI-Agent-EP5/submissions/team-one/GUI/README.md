@@ -16,8 +16,6 @@ renders what the deterministic backend recorded, nothing more.
 
 - `GOVhence Audit Console.dc.html` — **the live console** (editable source, Design Component).
 - `support.js` — runtime required by the source file.
-- `index.html` — old self-contained demo build with SIMULATED data (pre-hookup).
-  Superseded by the live console; kept only until a new bundle is built.
 
 ## Run (live console)
 
