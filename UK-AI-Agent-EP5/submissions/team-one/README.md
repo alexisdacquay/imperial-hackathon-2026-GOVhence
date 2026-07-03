@@ -20,7 +20,25 @@
 
 `109 tests passing` · `core = Python stdlib only` · `open-weight models only` · `fail-closed by design`
 
+<p align="center">
+  <a href="https://youtu.be/PWPuhyuSeNA">
+    <img src="https://img.youtube.com/vi/PWPuhyuSeNA/hqdefault.jpg" alt="GOVhence demo video — click to watch on YouTube" width="480">
+  </a>
+</p>
+<p align="center"><b>▶ <a href="https://youtu.be/PWPuhyuSeNA">Watch the 2-minute demo on YouTube</a></b></p>
+
 ---
+
+## What it does
+
+**GOVhence gives a whole company of AI agents one shared memory, while guaranteeing no agent ever
+reads what its user isn't cleared for.** Every stored memory carries security *labels*; every user
+*holds* clearances via their role. A deterministic gate (never an LLM) returns a memory only when
+the reader holds **all** of its labels. Derived memories (a summary, a briefing) inherit the union
+of their sources' labels, and revoking a source transitively revokes every derivative — the exact
+lineage-governance the track asks for. Every hop and every ALLOW/DENY is logged with its reason
+and its milliseconds, and rendered live in a bundled Audit Console. The read below the fold gives
+the problem, the approach, and a 10-second live proof.
 
 ## The problem
 
@@ -49,7 +67,7 @@ decision**. LLMs do the *language* work (what is this message about? is it worth
 - `topics` (what a memory is *about*, produced by an LLM) are used **only for relevance** —
   a topic can never grant access, so nothing can be smuggled past the gate via classification.
 
-## Orchestration flow
+## How it works — the pipeline
 
 Hub-and-spoke: **GOVhence**, a deterministic script, is the sole orchestrator — every hop goes
 through it, so every hop is recorded. Amber = plain code (holds all the power). Green = LLMs
@@ -210,11 +228,12 @@ Try the same question as `ben-staff`, `ben-driver`, `ben-exec`, `ben-legal`, `be
 
 ## Demo
 
-- 🖥️ **Live — zero setup:** `python GUI/serve_gui.py` → http://127.0.0.1:8777. The Audit
-  Console renders the recorded event feed ([data/events.jsonl](data/)) — the submission ships
-  with real demo runs pre-recorded (including the lineage-revocation DENY), so it displays
-  **without any API key**. Run your own turns and watch them stream in live.
-- 🎞️ **Deck:** [docs/GOVhence MEM-0 Presentation v2.pptx](docs/GOVhence%20MEM-0%20Presentation%20v2.pptx)
+- 🎥 **Video (2 min):** **https://youtu.be/PWPuhyuSeNA** — the full pipeline and the
+  lineage-revocation kill-switch, live.
+- 🌐 **Live demo — zero setup, no API key:** `python GUI/serve_gui.py` → http://127.0.0.1:8777.
+  The Audit Console renders the pre-recorded event feed ([data/events.jsonl](data/)) — including
+  the lineage-revocation DENY — then streams your own runs as you make them.
+- 🖼️ **Slides:** [docs/GOVhence MEM-0 Presentation v2.pptx](docs/GOVhence%20MEM-0%20Presentation%20v2.pptx)
 - 📜 The ["See it in 10 seconds"](#see-it-in-10-seconds) transcript above is real output —
   reproducible with the commands in *Run it*.
 
@@ -244,20 +263,32 @@ team-one/
 
 ## Tech & sponsor APIs used
 
-- **Models / LLMs:** open-weight only — **GLM-5.2** (via Nebius Token Factory and mor.org)
-  and **Mistral**. Each pipeline role can run a *different* model: per-component routing via
-  `.env` (`CLASSIFIER_LLM_*`, `JUDGE_LLM_*`, …), so any OpenAI-compatible endpoint —
-  including sponsor APIs — plugs in with zero code change.
-- **Frameworks:** none. Python 3.13 standard library end to end; `pytest` is the only
-  dependency. No database — three human-editable JSON files govern everything.
+- **Models / LLMs:** **open-weight only** — **GLM-5.2** (via Nebius Token Factory and mor.org)
+  and **Mistral** (`mistral-small`, `magistral-small`). Each pipeline role can run a *different*
+  model.
+- **BasedAI / sponsor tech:** designed for BasedAI / **BasedAPIs** open-weight models — the
+  per-component `.env` routing (`CLASSIFIER_LLM_*`, `JUDGE_LLM_*`, …) targets any
+  OpenAI-compatible endpoint, so a BasedAPIs base-URL + key drops in with **zero code change**.
+  Open-weight-only is a hard rule of the design, matching the track's ethos; no closed models
+  are ever in the loop.
+- **Frameworks:** none — Python 3.13 **standard library** end to end. No agent framework, no
+  database; three human-editable JSON files govern everything.
 - **Front-end:** React 18 (vendored, no build step) for the Audit Console, served by a
   stdlib loopback-only HTTP server.
+- **Other notable libraries:** `pytest` — the sole entry in `requirements.txt`.
 
-## Designed, not yet built
+## What's next
 
-Scoped in [docs/PRD-security.md](docs/PRD-security.md) with the threat model: a tamper-evident
-**hash-chained audit log** (append-only, gap-detecting, off-host anchoring) and semantic
-retrieval over already-permitted content. The event feed above is the operational precursor.
+Scoped in [docs/PRD-security.md](docs/PRD-security.md) with the threat model, given more time:
+a tamper-evident **hash-chained audit log** (append-only, gap-detecting, with off-host
+anchoring), and **semantic retrieval** (open-weight embeddings) over already-permitted content —
+so the LLM only ever sees memories the user is already cleared for. The event feed shipped here
+is the operational precursor to the audit log.
+
+## License
+
+No separate license file — this submission is **team-one's own work**; see the repository root
+for terms.
 
 ---
 
