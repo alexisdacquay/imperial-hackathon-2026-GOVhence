@@ -91,13 +91,18 @@ def visible(labels, clearances):
     return bool(labels) and labels <= clearances
 
 
-def clearances_for(user, users_path=_USERS_PATH):
+def clearances_for(user, users_path=_USERS_PATH, by="Bouncer"):
     """Read the user's clearances DIRECTLY from users.json (name -> role -> clearances).
 
     Unknown or invalid user -> empty set (fail-closed). A role with a missing or
     malformed 'clearances' list is a config bug -> ConfigError (loud, fail-closed).
-    Every check is recorded to the event log with its duration (best-effort;
-    recording can never change the outcome).
+    `by` names the component that requested this check (GOVhence for the pre-scope
+    read, Bouncer on the read path, Memoriser on the writer-cap check) — recorded
+    so the console attributes the credential read to the right component.
+
+    Every check is recorded to the event log with its duration (best-effort:
+    emit args are pre-stringified with eventlog.safe so recording can NEVER raise
+    into this gate).
     """
     t0 = time.perf_counter()
     try:
@@ -117,11 +122,11 @@ def clearances_for(user, users_path=_USERS_PATH):
                     raise ConfigError(f"users.json: role {role!r} has no 'clearances' list")
                 clearances = _str_set(rdef["clearances"], f"role {role!r} 'clearances'")
     except ConfigError as e:
-        eventlog.emit("credentials", component="Bouncer", user=str(user)[:80],
-                      status="failure", error=str(e),
+        eventlog.emit("credentials", component=by, user=eventlog.safe(user, 80),
+                      status="failure", error=eventlog.safe(e),
                       ms=round((time.perf_counter() - t0) * 1000, 3))
         raise
-    eventlog.emit("credentials", component="Bouncer", user=str(user)[:80],
+    eventlog.emit("credentials", component=by, user=eventlog.safe(user, 80),
                   status="ok", known=bool(clearances) or (isinstance(user, str) and user in users),
                   clearances=sorted(clearances),
                   ms=round((time.perf_counter() - t0) * 1000, 3))
@@ -207,15 +212,19 @@ def retrieve(query_topics, user, memories=None, users_path=_USERS_PATH,
                 reason = "no labels -> visible to nobody (fail-closed)"
             else:
                 reason = f"missing clearance(s) {sorted(labels - clearances)}"
-            decisions.append({"text": str(m.get("text", ""))[:160],
+            # SECURITY: the events feed has no access control, so a WITHHELD body
+            # here would be an ungoverned copy that defeats the gate. Record the
+            # body ONLY for ALLOW (the requester was served it anyway); redact it
+            # for DENY, keeping labels + reason for the audit trail.
+            decisions.append({"text": eventlog.safe(m.get("text", ""), 160) if permitted else "[withheld]",
                               "labels": sorted(labels), "matched": sorted(matched),
                               "decision": "ALLOW" if permitted else "DENY",
                               "reason": reason})
     except ConfigError as e:
-        eventlog.emit("bouncer.read", user=str(user)[:80], status="failure",
-                      error=str(e), ms=round((time.perf_counter() - t0) * 1000, 3))
+        eventlog.emit("bouncer.read", user=eventlog.safe(user, 80), status="failure",
+                      error=eventlog.safe(e), ms=round((time.perf_counter() - t0) * 1000, 3))
         raise
-    eventlog.emit("bouncer.read", user=str(user)[:80], status="success",
+    eventlog.emit("bouncer.read", user=eventlog.safe(user, 80), status="success",
                   topics=sorted(want), clearances=sorted(clearances),
                   relevant=len(decisions), permitted=len(lane),
                   withheld=len(decisions) - len(lane), decisions=decisions,

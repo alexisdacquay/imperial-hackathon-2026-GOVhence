@@ -123,7 +123,7 @@ def memorise(candidate, topics, memory, user, users_path=bouncer._USERS_PATH,
     """
     try:
         vocabulary = bouncer.all_labels(users_path)
-        clearances = bouncer.clearances_for(user, users_path=users_path)
+        clearances = bouncer.clearances_for(user, users_path=users_path, by="Memoriser")
     except bouncer.ConfigError as e:
         return _refuse(f"config error ({e})")
 

@@ -2,12 +2,20 @@
 
 One JSON object per line (JSONL), appended to data/events.jsonl (git-ignored
 runtime artifact). Every record carries a UTC timestamp (ms precision), a
-monotonic per-file sequence number, and the run id it belongs to — enough to
-trace and order everything (audit-traceable-lite). The full tamper-evident
-regulatory audit log (hash chain, fail-closed) is a SEPARATE deliverable
-(PRD-security S1); this feed is for visibility, so it is BEST-EFFORT BY
-DESIGN: a logging problem must never change what the pipeline does — emit()
-swallows its own failures and the caller never knows.
+per-process sequence number, and the run id it belongs to. Global ordering is
+by (run id, then arrival order in the file): the run id is unique per writer
+process, so events never interleave ambiguously across two terminals — the seq
+only orders within one process (it is NOT a cross-process file counter, and the
+GUI orders by file position, not seq). The full tamper-evident regulatory audit
+log (hash chain, fail-closed) is a SEPARATE deliverable (PRD-security S1); this
+feed is for visibility, so it is BEST-EFFORT BY DESIGN: a logging problem must
+never change what the pipeline does — emit() swallows its own failures, and its
+arguments must be pre-stringified with safe() so they cannot raise into a caller.
+
+SECURITY NOTE: never write into this feed any memory body the Bouncer WITHHELD
+from the requester. This file has no access control, so a denied body here would
+be an ungoverned copy that defeats the gate. DENY decisions record labels +
+reason only; the body is redacted (see bouncer.retrieve).
 
 What gets recorded (see govhence.py + bouncer.py):
   run.start / run.end        one user message end-to-end (with total ms)
@@ -30,12 +38,29 @@ _seq = None          # lazily initialised to the existing line count (continuity
 _run = None          # the current run id (single pipeline process; best-effort)
 
 
+def safe(value, limit=200):
+    """Stringify a value for the feed WITHOUT ever raising — a value with a
+    pathological __str__ must not blow up a caller (best-effort invariant). Falls
+    back to repr, then a placeholder, and is length-capped."""
+    try:
+        s = str(value)
+    except Exception:
+        try:
+            s = repr(value)
+        except Exception:
+            s = "<unprintable>"
+    return s[:limit]
+
+
 def _next_seq():
-    """Next sequence number; on first use, continue from the existing file."""
+    """Next sequence number; on first use, continue from the existing file's line
+    count. errors='replace' so one undecodable byte (a crash-truncated multibyte
+    char) can't kill the feed for the whole process — best-effort degrades per
+    event, never process-wide."""
     global _seq
     if _seq is None:
         try:
-            with _PATH.open(encoding="utf-8") as f:
+            with _PATH.open(encoding="utf-8", errors="replace") as f:
                 _seq = sum(1 for _ in f)
         except OSError:
             _seq = 0

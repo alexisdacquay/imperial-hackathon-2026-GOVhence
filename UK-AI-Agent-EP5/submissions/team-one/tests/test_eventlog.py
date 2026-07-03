@@ -68,6 +68,27 @@ def test_emit_is_best_effort_never_raises(monkeypatch, tmp_path):
     eventlog.emit("x", detail="anything")                          # must not raise
 
 
+class _Boom:
+    def __str__(self): raise RuntimeError("hostile __str__")
+    def __repr__(self): raise RuntimeError("hostile __repr__")
+
+
+def test_safe_never_raises_even_on_hostile_object():
+    assert eventlog.safe(_Boom()) == "<unprintable>"              # str + repr both raise
+    assert eventlog.safe("x" * 500, 10) == "x" * 10               # length-capped
+    assert eventlog.safe(12345) == "12345"
+
+
+def test_next_seq_survives_undecodable_bytes(monkeypatch, tmp_path):
+    # a crash-truncated multibyte char must not permanently kill the feed
+    p = tmp_path / "events.jsonl"
+    p.write_bytes(b'{"seq": 0}\n\xff\xfe not utf-8\n')
+    monkeypatch.setattr(eventlog, "_PATH", p)
+    monkeypatch.setattr(eventlog, "_seq", None)
+    eventlog.emit("x")                                            # must not raise, must write
+    assert p.read_text(encoding="utf-8", errors="replace").strip().endswith('"ev": "x"}')
+
+
 # --- Bouncer hooks: credentials + read decisions with ms ---------------------------
 
 def test_credential_check_recorded_with_ms(users_path):
@@ -91,10 +112,31 @@ def test_read_records_allow_and_deny_decisions(users_path):
     assert ev["status"] == "success" and ev["user"] == "ben"
     assert ev["relevant"] == 2 and ev["permitted"] == 1 and ev["withheld"] == 1
     assert isinstance(ev["ms"], float)
-    by_text = {d["text"]: d for d in ev["decisions"]}
-    assert by_text["public tip"]["decision"] == "ALLOW"
-    denied = by_text["secret numbers"]
-    assert denied["decision"] == "DENY" and "financials" in denied["reason"]
+    by_decision = {d["decision"]: d for d in ev["decisions"]}
+    assert by_decision["ALLOW"]["text"] == "public tip"            # permitted -> body shown
+    assert "financials" in by_decision["DENY"]["reason"]
+    assert by_decision["DENY"]["labels"] == ["financials"]         # labels kept for audit
+
+
+def test_denied_memory_body_is_redacted_not_leaked(users_path):
+    # SECURITY: the withheld memory's body must NEVER reach the clearance-free feed.
+    bouncer.retrieve(["bread"], "ben", MEMS, users_path=users_path)
+    blob = eventlog._PATH.read_text(encoding="utf-8")
+    assert "secret numbers" not in blob                            # the denied body is gone
+    assert "[withheld]" in blob                                    # replaced by a redaction marker
+
+
+def test_credential_check_attributed_to_requesting_component(users_path):
+    bouncer.clearances_for("ben", users_path=users_path, by="Memoriser")
+    ev = [e for e in _events() if e["ev"] == "credentials"][-1]
+    assert ev["component"] == "Memoriser"                          # not positionally guessed
+
+
+def test_logging_never_raises_into_the_gate_on_hostile_identity(users_path):
+    # An identity whose __str__ raises must not turn the fail-closed set() into a
+    # crash: emit args are pre-stringified with safe(), so the gate stays total.
+    result = bouncer.clearances_for(_Boom(), users_path=users_path)
+    assert result == set()                                         # invalid identity -> no access, quiet
 
 
 def test_read_failure_recorded_and_still_raised(users_path):

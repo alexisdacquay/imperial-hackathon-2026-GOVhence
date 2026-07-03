@@ -62,11 +62,22 @@ def handle(user, message):
     eventlog.start_run(user, message=message,
                        role=profile["role"], department=profile["department"])
     print(f"GOVhence             | profile (from store, never LLM) = {profile}")
+    try:
+        _run_pipeline(user, message, t_run, _ms)
+    except Exception as e:
+        # A fail-closed crash (e.g. ConfigError from the Bouncer on corrupt config)
+        # still exits non-zero, but we record a run.end first so the console shows
+        # the failed run instead of silently freezing on the last good one.
+        eventlog.end_run(status="error", error=eventlog.safe(e), ms_total=_ms(t_run))
+        raise
 
+
+def _run_pipeline(user, message, t_run, _ms):
+    profile = PROFILES[user]
     # GOVhence -> Classifier -> GOVhence  (LLM-backed). Scope the reusable topic vocabulary
     # to what THIS user may see, so we never feed the model topics of memories they can't
     # access (clearance-scoped known topics; the Bouncer still independently enforces retrieval).
-    clearances = bouncer.clearances_for(user)
+    clearances = bouncer.clearances_for(user, by="GOVhence")
     known = sorted({t for m in bouncer.filter_visible(MEMORY, clearances)
                     for t in m.get("topics", [])})
     eventlog.emit("call", src="GOVhence", dst="Classifier")
