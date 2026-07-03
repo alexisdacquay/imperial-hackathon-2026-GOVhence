@@ -167,6 +167,54 @@ def test_broken_memory_store_raises_configerror_not_raw_errors(tmp_path):
         bouncer.load_memories(memory_path=bad)
 
 
+# --- ACL cache: in-memory reads, TTL refresh, fail-closed on bad reload ------------
+
+def test_cache_hit_avoids_a_second_disk_read(users_path, monkeypatch):
+    # Second credential check within the TTL is served from memory (no re-read).
+    calls = {"n": 0}
+    real = bouncer._load_json
+    monkeypatch.setattr(bouncer, "_load_json",
+                        lambda *a, **k: (calls.__setitem__("n", calls["n"] + 1), real(*a, **k))[1])
+    bouncer.clearances_for("ben", users_path=users_path)          # miss -> reads disk
+    bouncer.clearances_for("ben", users_path=users_path)          # hit  -> memory
+    bouncer.clearances_for("lea", users_path=users_path)          # hit  -> memory (same file)
+    assert calls["n"] == 1
+
+
+def test_ttl_zero_always_reads_fresh_and_picks_up_edits(users_path):
+    # ttl=0 = pre-cache behaviour: a rewrite is seen on the very next call.
+    assert bouncer.clearances_for("ben", users_path=users_path, ttl=0) == {"shared", "logistics"}
+    bumped = {**USERS, "roles": {**USERS["roles"],
+              "driver": {"department": "logistics", "clearances": ["shared", "logistics", "financials"]}}}
+    users_path.write_text(json.dumps(bumped), encoding="utf-8")
+    assert bouncer.clearances_for("ben", users_path=users_path, ttl=0) == {"shared", "logistics", "financials"}
+
+
+def test_within_ttl_serves_the_cached_copy(users_path):
+    # A large TTL: an edit is NOT yet visible until the window elapses (the accepted
+    # staleness trade-off). Proven without sleeping by using a big ttl on both calls.
+    assert bouncer.clearances_for("ben", users_path=users_path, ttl=999) == {"shared", "logistics"}
+    users_path.write_text(json.dumps({"roles": {"driver": {"clearances": ["shared"]}},
+                                      "users": {"ben": "driver"}}), encoding="utf-8")
+    assert bouncer.clearances_for("ben", users_path=users_path, ttl=999) == {"shared", "logistics"}  # still cached
+
+
+def test_bad_reload_fails_closed_never_serves_stale(users_path):
+    # Cache a good file, then corrupt it: a fresh read must raise ConfigError,
+    # never serve the stale-but-valid cached copy over a now-broken file.
+    bouncer.clearances_for("ben", users_path=users_path, ttl=999)  # cache a good copy
+    users_path.write_text("{ not json", encoding="utf-8")
+    with pytest.raises(ConfigError):
+        bouncer.clearances_for("ben", users_path=users_path, ttl=0)
+
+
+def test_cache_preserves_fail_closed_semantics(users_path):
+    # unknown user and non-str identity still resolve to no access, cache or not.
+    assert bouncer.clearances_for("mallory", users_path=users_path) == set()
+    assert bouncer.clearances_for(123, users_path=users_path) == set()
+    assert bouncer.all_labels(users_path=users_path) == {"shared", "logistics", "legal", "financials"}
+
+
 # --- store resolution: runtime store (Memoriser-written) preferred, seed fallback --
 
 def test_resolve_memory_path_prefers_runtime_store(tmp_path):

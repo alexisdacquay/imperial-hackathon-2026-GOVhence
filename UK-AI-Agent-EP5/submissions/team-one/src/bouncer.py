@@ -26,6 +26,8 @@ Malformed config or memory data raises ConfigError (loud, fail-closed) rather
 than leaking a bare TypeError from inside set operations.
 """
 import json
+import os
+import threading
 import time
 from pathlib import Path
 
@@ -54,6 +56,46 @@ def _load_json(path, what):
     if not isinstance(data, dict):
         raise ConfigError(f"{what}: top level must be an object, got {type(data).__name__}")
     return data
+
+
+# --- users.json (the ACL source) cache -------------------------------------------
+# The profile store is read on the HOT path — up to 3x per request (GOVhence
+# pre-scope, Bouncer read, Memoriser writer-cap) plus all_labels — so we keep the
+# parsed+validated config in memory and only re-read from disk when the cached copy
+# is older than a short TTL (default 5s, env GOVHENCE_ACL_TTL_SECONDS). This is the
+# spec's "stay synchronized with source permissions under concurrent updates": an
+# edit to users.json takes effect within TTL, with NO restart. Trade-off (accepted):
+# a revoked clearance keeps working for up to TTL seconds (the staleness window) —
+# keep TTL small. ttl=0 forces a fresh read every call (the pre-cache behaviour;
+# used by tests). Reads only; the file is edited out of band.
+_ACL_TTL = float(os.environ.get("GOVHENCE_ACL_TTL_SECONDS", "5.0"))
+_users_cache = {}                                # resolved path -> (loaded_at_monotonic, parsed dict)
+_ACL_LOCK = threading.Lock()                     # a long-lived session may be multi-threaded
+
+
+def _users_config(path=_USERS_PATH, ttl=None):
+    """Parsed+validated users.json, from memory when fresh, else re-read from disk.
+
+    Fail-closed preserved: a malformed/missing file raises ConfigError (via
+    _load_json) and the cache entry is NOT updated, so the next call retries at
+    once — a stale-but-valid copy is never served over a now-broken file.
+    """
+    if ttl is None:
+        ttl = _ACL_TTL
+    key = str(path)                              # cheap key (no resolve() syscall); callers
+    with _ACL_LOCK:                              # pass a stable path, so the raw string is enough
+        hit = _users_cache.get(key)
+        if hit is not None and (time.monotonic() - hit[0]) < ttl:
+            return hit[1]                        # fresh enough -> serve from memory
+        data = _load_json(path, "users.json")    # raises ConfigError -> propagate, cache untouched
+        _users_cache[key] = (time.monotonic(), data)
+        return data
+
+
+def _reset_acl_cache():
+    """Drop all cached users configs (used by tests for a cold start each run)."""
+    with _ACL_LOCK:
+        _users_cache.clear()
 
 
 def _str_set(value, what):
@@ -91,14 +133,15 @@ def visible(labels, clearances):
     return bool(labels) and labels <= clearances
 
 
-def clearances_for(user, users_path=_USERS_PATH, by="Bouncer"):
-    """Read the user's clearances DIRECTLY from users.json (name -> role -> clearances).
+def clearances_for(user, users_path=_USERS_PATH, by="Bouncer", ttl=None):
+    """Read the user's clearances from the cached users.json (name -> role -> clearances).
 
     Unknown or invalid user -> empty set (fail-closed). A role with a missing or
     malformed 'clearances' list is a config bug -> ConfigError (loud, fail-closed).
     `by` names the component that requested this check (GOVhence for the pre-scope
     read, Bouncer on the read path, Memoriser on the writer-cap check) — recorded
-    so the console attributes the credential read to the right component.
+    so the console attributes the credential read to the right component. `ttl`
+    overrides the ACL cache freshness window (ttl=0 = always re-read from disk).
 
     Every check is recorded to the event log with its duration (best-effort:
     emit args are pre-stringified with eventlog.safe so recording can NEVER raise
@@ -106,7 +149,7 @@ def clearances_for(user, users_path=_USERS_PATH, by="Bouncer"):
     """
     t0 = time.perf_counter()
     try:
-        data = _load_json(users_path, "users.json")
+        data = _users_config(users_path, ttl)
         users, roles = data.get("users", {}), data.get("roles", {})
         if not isinstance(users, dict) or not isinstance(roles, dict):
             raise ConfigError("users.json: 'users' and 'roles' must be objects")
@@ -133,11 +176,12 @@ def clearances_for(user, users_path=_USERS_PATH, by="Bouncer"):
     return clearances
 
 
-def all_labels(users_path=_USERS_PATH):
+def all_labels(users_path=_USERS_PATH, ttl=None):
     """The known security-label vocabulary: the union of every role's clearances in
     users.json. This is what a write-time labeller may choose from — a label nobody
-    could ever hold cannot be assigned. Malformed config -> ConfigError."""
-    data = _load_json(users_path, "users.json")
+    could ever hold cannot be assigned. Malformed config -> ConfigError. Reads via
+    the ACL cache (ttl overrides the freshness window)."""
+    data = _users_config(users_path, ttl)
     roles = data.get("roles")
     if not isinstance(roles, dict):
         raise ConfigError("users.json: 'roles' must be an object")

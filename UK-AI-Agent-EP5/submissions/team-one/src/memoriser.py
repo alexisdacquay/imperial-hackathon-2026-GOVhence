@@ -99,7 +99,7 @@ def _writer_context(user, users_path):
     """role + department for the prompt (disambiguation only — NEVER the name).
     Defensive: any malformed shape just degrades to 'unknown'."""
     try:
-        data = bouncer._load_json(users_path, "users.json")
+        data = bouncer._users_config(users_path)
     except bouncer.ConfigError:
         return "unknown", "unknown"
     users, roles = data.get("users"), data.get("roles")
