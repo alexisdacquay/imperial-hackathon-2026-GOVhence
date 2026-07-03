@@ -264,3 +264,93 @@ def test_real_store_dual_label_memory_hidden_from_all_seed_users():
     # {financials, legal} — no seed user holds both -> invisible to everyone.
     for user in ("bob", "alice", "carol"):
         assert bouncer.retrieve(["settlement", "acme"], user, memory_path=SEED) == []
+
+
+# --- lineage: a derivative inherits its sources' constraints; revoking a source ---
+# --- propagates to the derivative (track requirement; see bouncer.revoked_ids) ----
+
+LINEAGE_MEMS = [
+    {"id": "m1", "labels": ["shared"], "topics": ["policy"], "text": "source policy"},
+    {"id": "m2", "derived_from": ["m1"], "labels": ["shared"], "topics": ["policy"],
+     "text": "summary of the policy"},
+    {"id": "m3", "derived_from": ["m2"], "labels": ["shared"], "topics": ["policy"],
+     "text": "note on the summary"},
+]
+
+
+def _lineage(tmp_path, revoked):
+    p = tmp_path / "lineage.json"
+    p.write_text(json.dumps({"revoked": revoked}), encoding="utf-8")
+    return p
+
+
+def test_seed_derived_labels_are_union_of_sources():
+    # INHERITANCE AS DATA: the derived briefing's labels equal the UNION of its
+    # sources' labels, so the ordinary ALL-labels rule enforces the sources'
+    # combined access constraints — no extra read-time code needed.
+    by_id = {m.get("id"): m for m in bouncer.load_memories(SEED)}
+    briefing = by_id["m-briefing"]
+    union = set()
+    for src in briefing["derived_from"]:
+        union |= set(by_id[src]["labels"])
+    assert set(briefing["labels"]) == union == {"financials", "legal"}
+
+
+def test_seed_derivative_inherits_both_sources_constraints():
+    # ben-exec holds financials (sees source m-revenue) and ben-legal holds legal
+    # (sees source m-contract) — but NEITHER sees the derived briefing; only the
+    # auditor, holding BOTH sources' labels, does.
+    lane = bouncer.retrieve(["briefing"], "ben-auditor", memory_path=SEED)
+    assert _texts(lane) == {"Risk briefing: Q3 London revenue was 4.2M and the Acme "
+                            "contract carries a late-delivery penalty."}
+    assert bouncer.retrieve(["briefing"], "ben-exec", memory_path=SEED) == []
+    assert bouncer.retrieve(["briefing"], "ben-legal", memory_path=SEED) == []
+
+
+def test_revoking_a_source_propagates_transitively(users_path, tmp_path):
+    # max (auditor) holds every label, so all three are visible... until the ROOT
+    # source m1 is revoked: m2 (derived from m1) and m3 (derived from m2) go with
+    # it — revoked beats permitted, transitively.
+    ok = _lineage(tmp_path, [])
+    lane = bouncer.retrieve(["policy"], "max", LINEAGE_MEMS, users_path=users_path,
+                            lineage_path=ok)
+    assert len(lane) == 3
+    rev = _lineage(tmp_path, ["m1"])
+    lane = bouncer.retrieve(["policy"], "max", LINEAGE_MEMS, users_path=users_path,
+                            lineage_path=rev)
+    assert lane == []
+
+
+def test_revocation_closure_direct_and_cycle_safe(users_path, tmp_path):
+    # The closure itself: revoking the middle of the chain takes its descendant but
+    # NOT its parent; and a derived_from cycle terminates instead of hanging.
+    assert bouncer.revoked_ids(LINEAGE_MEMS, _lineage(tmp_path, ["m2"])) == {"m2", "m3"}
+    cyclic = [{"id": "a", "derived_from": ["b"], "labels": ["shared"], "topics": ["x"], "text": "a"},
+              {"id": "b", "derived_from": ["a"], "labels": ["shared"], "topics": ["x"], "text": "b"}]
+    assert bouncer.revoked_ids(cyclic, _lineage(tmp_path, ["a"])) == {"a", "b"}
+
+
+def test_lineage_file_fail_closed_but_optional(users_path, tmp_path):
+    # MISSING file = no revocations (optional config). PRESENT but malformed =
+    # ConfigError — an error must never silently read as the permissive "empty".
+    absent = tmp_path / "no-lineage.json"
+    lane = bouncer.retrieve(["policy"], "max", LINEAGE_MEMS, users_path=users_path,
+                            lineage_path=absent)
+    assert len(lane) == 3
+    bad = tmp_path / "lineage.json"
+    for broken in ("{ not json", '{"revoked": "m1"}', '{"revoked": [42]}'):
+        bad.write_text(broken, encoding="utf-8")
+        with pytest.raises(ConfigError):
+            bouncer.retrieve(["policy"], "max", LINEAGE_MEMS, users_path=users_path,
+                             lineage_path=bad)
+
+
+def test_derivative_without_id_is_refused(users_path, tmp_path):
+    # An id-less derivative could never match the revoked closure — it would
+    # silently ESCAPE revocation (fail-open). Refused loudly instead.
+    escapee = [{"derived_from": ["m1"], "labels": ["shared"], "topics": ["x"], "text": "no id"}]
+    with pytest.raises(ConfigError):
+        bouncer.revoked_ids(escapee, _lineage(tmp_path, []))
+    not_a_list = [{"id": "m9", "derived_from": "m1", "labels": ["shared"], "topics": ["x"], "text": "bad"}]
+    with pytest.raises(ConfigError):
+        bouncer.revoked_ids(not_a_list, _lineage(tmp_path, []))

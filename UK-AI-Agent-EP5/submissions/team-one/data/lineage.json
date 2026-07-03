@@ -1,0 +1,4 @@
+{
+  "_comment": "Derived-memory lineage revocation (hand-edited config, like users.json). Put a memory id in 'revoked' and the Bouncer denies that memory AND every memory transitively derived from it (following each item's 'derived_from' list) — revoked beats permitted, even for a user holding all the labels. The store itself is never modified: revert by removing the id. Empty list = nothing revoked. Try it live: set [\"m-revenue\"] and the 'm-briefing' summary disappears too, even for ben-auditor. JSON has no comments, so this '_comment' key is ignored.",
+  "revoked": []
+}

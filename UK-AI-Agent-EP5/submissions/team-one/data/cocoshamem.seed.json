@@ -1,12 +1,16 @@
 {
-  "_comment": "CocoShaMem seed — the starting shared memories. Each memory has 'labels' (security labels it CARRIES — who may see it; the Bouncer requires the user's clearances to cover ALL of them) and 'topics' (what it is ABOUT — relevance/search, ANY overlap with the query matches). The last memory carries TWO labels: only a user holding BOTH financials AND legal can see it — none of the seed users can. JSON has no comments, so this '_comment' key is ignored.",
+  "_comment": "CocoShaMem seed — the starting shared memories. Each memory has 'labels' (security labels it CARRIES — who may see it; the Bouncer requires the user's clearances to cover ALL of them) and 'topics' (what it is ABOUT — relevance/search, ANY overlap with the query matches). The settlement memory carries TWO labels: only a user holding BOTH financials AND legal can see it. LINEAGE: 'm-briefing' is a DERIVED memory — 'derived_from' names its sources and its labels are the UNION of theirs (financials+legal), so it inherits both sources' access constraints (only ben-auditor holds both); revoking a source id in data/lineage.json hides the briefing too (bouncer.revoked_ids). JSON has no comments, so this '_comment' key is ignored.",
 
   "memories": [
     { "labels": ["shared"],               "topics": ["sandwich", "food", "london"], "text": "The deli on Carter Lane does great sandwiches." },
     { "labels": ["shared"],               "topics": ["parking", "london"],          "text": "Visitor parking is on Friar Street." },
     { "labels": ["logistics"],            "topics": ["delivery", "schedule"],       "text": "The Watford depot accepts deliveries only before 11am." },
-    { "labels": ["financials"],           "topics": ["revenue", "london"],          "text": "Q3 revenue for the London office was 4.2M." },
-    { "labels": ["legal"],                "topics": ["contract", "penalty"],        "text": "The Acme supplier contract has a late-delivery penalty clause." },
-    { "labels": ["financials", "legal"],  "topics": ["settlement", "acme"],         "text": "The Acme dispute settled for 250k — commercially confidential." }
+    { "id": "m-revenue",  "labels": ["financials"],           "topics": ["revenue", "london"],   "text": "Q3 revenue for the London office was 4.2M." },
+    { "id": "m-contract", "labels": ["legal"],                "topics": ["contract", "penalty"], "text": "The Acme supplier contract has a late-delivery penalty clause." },
+    { "labels": ["financials", "legal"],  "topics": ["settlement", "acme"],         "text": "The Acme dispute settled for 250k — commercially confidential." },
+    { "id": "m-briefing", "derived_from": ["m-revenue", "m-contract"],
+      "labels": ["financials", "legal"],
+      "topics": ["exposure", "briefing", "revenue", "contract"],
+      "text": "Risk briefing: Q3 London revenue was 4.2M and the Acme contract carries a late-delivery penalty." }
   ]
 }

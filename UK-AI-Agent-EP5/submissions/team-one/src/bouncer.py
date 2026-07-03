@@ -10,7 +10,9 @@ DEFINITIVE VOCABULARY (repo-wide — two very different kinds of "tags", never m
 ACCESS RULE (whitelist-only, government-classification style, fail-closed):
   permitted  <=>  labels is non-empty  AND  labels ⊆ clearances   (ALL labels held)
   relevant   <=>  topics ∩ query_topics is non-empty              (ANY topic shared)
-  returned   <=>  permitted AND relevant
+  revoked    <=>  id ∈ transitive closure of data/lineage.json's revoked list
+                  over 'derived_from' edges (revoked beats permitted — see revoked_ids)
+  returned   <=>  permitted AND relevant AND NOT revoked
 
 No deny list, no wildcard: access exists only where explicitly granted, so a new
 label grants nobody anything until a role lists it. A memory with NO labels is
@@ -37,6 +39,7 @@ _DATA = Path(__file__).parent.parent / "data"
 _USERS_PATH = _DATA / "users.json"
 _SEED_PATH = _DATA / "cocoshamem.seed.json"  # committed demo seed (never written at runtime)
 _STORE_PATH = _DATA / "cocoshamem.json"      # runtime store (git-ignored; the Memoriser writes it)
+_LINEAGE_PATH = _DATA / "lineage.json"       # revocation list for derived-memory lineage (hand-edited)
 
 
 class ConfigError(Exception):
@@ -223,10 +226,61 @@ def load_memories(memory_path=None):
     return raw
 
 
+# --- derived-memory lineage: revoking a source propagates to its derivatives ------
+
+def revoked_ids(memories, lineage_path=_LINEAGE_PATH):
+    """The transitive revocation closure: every id in lineage.json's "revoked" list
+    PLUS every memory transitively derived from one, walking the optional
+    'derived_from': [source ids] field on the items (child -> parents).
+
+    This is the lineage requirement's second half — "revoking a source propagates
+    to the derivative" (the first half, "a derivative inherits its sources' access
+    constraints", is the labels UNION carried on the derived item, enforced by the
+    ordinary ALL-labels rule). retrieve() denies any memory whose id lands in this
+    set: revoked beats permitted.
+
+    A MISSING lineage file means "nothing revoked" (lineage is optional config);
+    a PRESENT but malformed one raises ConfigError (fail-closed — an error must
+    never silently read as the permissive "empty"). The walk is iterative with a
+    seen-set, so a cycle or diamond in 'derived_from' can never hang or recurse.
+    """
+    path = Path(lineage_path)
+    if path.exists():
+        revoked = _str_set(_load_json(path, "lineage.json").get("revoked", []),
+                           "lineage 'revoked'")
+    else:
+        revoked = set()                                # absent file = no revocations
+    # Invert each item's child -> parents into parent -> [children] for the outward
+    # walk. Validated even when nothing is revoked (malformed lineage data is loud).
+    children = {}
+    for m in memories:
+        if not isinstance(m, dict):
+            raise ConfigError(f"memory item must be an object, got {m!r}")
+        sources = m.get("derived_from")
+        if sources is None:
+            continue                                   # original memory: no lineage
+        child = m.get("id")
+        if not isinstance(child, str) or not child:
+            # An id-less derivative could never be matched by the closure — it
+            # would silently escape revocation (fail-open). Refuse it loudly.
+            raise ConfigError(f"memory with 'derived_from' needs a non-empty string 'id', got {child!r}")
+        for parent in _str_set(sources, "memory 'derived_from'"):
+            children.setdefault(parent, []).append(child)
+    seen, stack = set(), list(revoked)                 # start from every revoked source
+    while stack:
+        node = stack.pop()
+        if node in seen:
+            continue                                   # cycle / diamond guard
+        seen.add(node)
+        stack.extend(children.get(node, []))           # enqueue its derivatives
+    return frozenset(seen)
+
+
 def retrieve(query_topics, user, memories=None, users_path=_USERS_PATH,
-             memory_path=None):
+             memory_path=None, lineage_path=_LINEAGE_PATH):
     """query topics (relevance, from the LLM) + user (identity) -> the MemoryLane:
-    memories that are BOTH permitted (labels ⊆ clearances) and relevant (ANY topic).
+    memories that are BOTH permitted (labels ⊆ clearances) and relevant (ANY topic),
+    and NOT revoked via lineage (revoked_ids — revoked beats permitted).
 
     If `memories` is None the store is loaded from disk (runtime store, falling
     back to the seed — see resolve_memory_path). Access is decided ONLY by labels
@@ -242,20 +296,25 @@ def retrieve(query_topics, user, memories=None, users_path=_USERS_PATH,
         clearances = clearances_for(user, users_path)
         if memories is None:
             memories = load_memories(memory_path)
+        revoked = revoked_ids(memories, lineage_path)
         lane, decisions = [], []
         for m in memories:
             labels, topics = _item_sets(m)
             matched = topics & want
             if not matched:
                 continue                               # not relevant -> not evaluated
-            permitted = visible(labels, clearances)
-            if permitted:
-                lane.append(m)
-                reason = "all labels held"
-            elif not labels:
-                reason = "no labels -> visible to nobody (fail-closed)"
+            if m.get("id") in revoked:                 # revoked beats permitted:
+                permitted = False                      # lineage denial wins even if
+                reason = f"revoked via lineage ({m['id']!r})"  # all labels are held
             else:
-                reason = f"missing clearance(s) {sorted(labels - clearances)}"
+                permitted = visible(labels, clearances)
+                if permitted:
+                    lane.append(m)
+                    reason = "all labels held"
+                elif not labels:
+                    reason = "no labels -> visible to nobody (fail-closed)"
+                else:
+                    reason = f"missing clearance(s) {sorted(labels - clearances)}"
             # SECURITY: the events feed has no access control, so a WITHHELD body
             # here would be an ungoverned copy that defeats the gate. Record the
             # body ONLY for ALLOW (the requester was served it anyway); redact it
