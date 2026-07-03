@@ -208,6 +208,16 @@ python GUI/serve_gui.py                               # Audit Console → http:/
 Try the same question as `ben-staff`, `ben-driver`, `ben-exec`, `ben-legal`, `ben-auditor`
 (one user per clearance level) and watch the MemoryLane change.
 
+## Demo
+
+- 🖥️ **Live — zero setup:** `python GUI/serve_gui.py` → http://127.0.0.1:8777. The Audit
+  Console renders the recorded event feed ([data/events.jsonl](data/)) — the submission ships
+  with real demo runs pre-recorded (including the lineage-revocation DENY), so it displays
+  **without any API key**. Run your own turns and watch them stream in live.
+- 🎞️ **Deck:** [docs/GOVhence MEM-0 Presentation v2.pptx](docs/GOVhence%20MEM-0%20Presentation%20v2.pptx)
+- 📜 The ["See it in 10 seconds"](#see-it-in-10-seconds) transcript above is real output —
+  reproducible with the commands in *Run it*.
+
 ## Project structure
 
 ```
@@ -231,6 +241,17 @@ team-one/
 | **Models** | **Open-weight only** (GLM-5.2, Mistral) — per-component routing via `.env`, so each role can run a different model. |
 | **Tests** | 109 passing — access rules, fail-closed totality, topics-vs-labels, lineage closure, writer cap, atomic persistence, event log redaction. |
 | **Hardened against** | prompt injection in messages *and* stored notes, label-smuggling via topics, homoglyph/RTL unicode, malformed config, hostile identities, multi-paragraph payloads. |
+
+## Tech & sponsor APIs used
+
+- **Models / LLMs:** open-weight only — **GLM-5.2** (via Nebius Token Factory and mor.org)
+  and **Mistral**. Each pipeline role can run a *different* model: per-component routing via
+  `.env` (`CLASSIFIER_LLM_*`, `JUDGE_LLM_*`, …), so any OpenAI-compatible endpoint —
+  including sponsor APIs — plugs in with zero code change.
+- **Frameworks:** none. Python 3.13 standard library end to end; `pytest` is the only
+  dependency. No database — three human-editable JSON files govern everything.
+- **Front-end:** React 18 (vendored, no build step) for the Audit Console, served by a
+  stdlib loopback-only HTTP server.
 
 ## Designed, not yet built
 
