@@ -92,6 +92,16 @@
         "schedule"
       ],
       "text": "All deliveries are cancelled due to road closures outside the warehouse, until further notice."
+    },
+    {
+      "labels": [
+        "financials"
+      ],
+      "topics": [
+        "revenue",
+        "delivery"
+      ],
+      "text": "Our profit this year is $50M, with 30% margins on deliveries."
     }
   ]
 }
